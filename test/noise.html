@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixiJS Continental World Generator</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b0e14;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <script src="https://pixijs.download/v8.1.0/pixi.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import { createNoise3D } from 'https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/+esm';
+
+        // --- 1. CONTINENTAL GENERATION ENGINE ---
+        const MAP_COLS = 90;
+        const MAP_ROWS = 55;
+        let hexSize = 16.0; 
+
+        function hexToCartesian(col, row) {
+            const hexWidth = Math.sqrt(3) * hexSize;
+            const hexHeight = 2 * hexSize;
+            let x = hexWidth * (col + (row & 1) * 0.5);
+            let y = hexHeight * row * 0.75;
+            return { x, y };
+        }
+
+        function getContinentalElevation(noise3D, col, row, numCols, numRows) {
+            const worldPos = hexToCartesian(col, row);
+            
+            // 1. Macromass Continent Noise (Large, sweeping shapes)
+            let macro = noise3D(worldPos.x * 0.0008, worldPos.y * 0.0008, 50.0);
+            macro = (macro + 1) / 2;
+
+            // 2. Detail Noise (Adds rugged coastlines and islands)
+            let detail = 0;
+            let freq = 0.004;
+            let amp = 1;
+            let maxAmp = 0;
+            for(let i = 0; i < 3; i++) {
+                detail += ((noise3D(worldPos.x * freq, worldPos.y * freq, 150.0) + 1) / 2) * amp;
+                maxAmp += amp;
+                amp *= 0.45;
+                freq *= 2.2;
+            }
+            detail /= maxAmp;
+
+            // Blend Macro shapes (70%) with Detail shapes (30%)
+            let mixedElevation = (macro * 0.7) + (detail * 0.3);
+
+            // 3. Center Masking (Pushes borders into Deep Ocean, forcing central continents)
+            let nx = (col / numCols) * 2 - 1; 
+            let ny = (row / numRows) * 2 - 1;
+            let distanceFromCenter = Math.sqrt(nx * nx + ny * ny); 
+            
+            // Create a soft falloff drop towards the edges
+            let mask = 1.0 - Math.pow(distanceFromCenter, 1.8);
+            mask = Math.max(0, Math.min(1, mask));
+
+            // Apply mask to shape continents and preserve small outer islands
+            let finalElevation = mixedElevation * (mask * 0.85 + 0.15);
+
+            return finalElevation;
+        }
+
+        function getHexMoisture(noise3D, col, row) {
+            const worldPos = hexToCartesian(col, row);
+            let freq = 0.002;
+            let m = noise3D(worldPos.x * freq, worldPos.y * freq, 500.0);
+            return (m + 1) / 2;
+        }
+
+        function getHexTemperature(noise3D, col, row, maxRows, elevation) {
+            let distanceToEquator = Math.abs(row - (maxRows / 2)) / (maxRows / 2);
+            let latitudeFactor = 1 - distanceToEquator; 
+            let temperature = (latitudeFactor * 0.8) - (elevation * 0.2);
+            return Math.max(0, Math.min(1, temperature));
+        }
+
+        function getNeighbors(col, row) {
+            const parity = row & 1;
+            return [
+                { col: col + 1, row: row },     
+                { col: col - 1, row: row },     
+                { col: col + parity - 1, row: row - 1 }, 
+                { col: col + parity,     row: row - 1 }, 
+                { col: col + parity - 1, row: row + 1 }, 
+                { col: col + parity,     row: row + 1 }  
+            ];
+        }
+
+        function generateHexWorld(noise3D, numCols, numRows) {
+            const hexGrid = [];
+            const tileMap = new Map();
+
+            for (let row = 0; row < numRows; row++) {
+                for (let col = 0; col < numCols; col++) {
+                    let elevation = getContinentalElevation(noise3D, col, row, numCols, numRows);
+                    let moisture  = getHexMoisture(noise3D, col, row);
+                    let temp      = getHexTemperature(noise3D, col, row, numRows, elevation);
+
+                    let terrainType = "Plains";
+                    let isWater = false;
+                    
+                    // Controlled Threshold bands for true Oceans vs Landmasses
+                    if (elevation < 0.22) {
+                        terrainType = "Deep Ocean";
+                        isWater = true;
+                    } else if (elevation < 0.38) {
+                        terrainType = "Coast";
+                        isWater = true;
+                    } else if (elevation > 0.74) {
+                        terrainType = "Mountain";
+                    } else if (elevation > 0.62) {
+                        terrainType = "Hills";
+                    } else {
+                        if (temp < 0.25) {
+                            terrainType = "Tundra";
+                        } else if (temp > 0.58 && moisture < 0.3) {
+                            terrainType = "Desert";
+                        } else if (moisture > 0.65) {
+                            terrainType = "Tropical Rainforest";
+                        } else if (moisture < 0.42) {
+                            terrainType = "Grassland";
+                        }
+                    }
+
+                    const tile = {
+                        col, row,
+                        terrain: terrainType,
+                        elevation,
+                        isWater,
+                        seed: Math.random(), 
+                        riverConnections: new Set(),
+                        riverVolume: 0
+                    };
+                    
+                    hexGrid.push(tile);
+                    tileMap.set(`${col},${row}`, tile);
+                }
+            }
+
+            // Hydraulic Rivers Simulation (Spawn deep inside landmasses)
+            const sourceTiles = hexGrid.filter(t => (t.terrain === "Mountain" || t.terrain === "Hills") && Math.random() < 0.25);
+            sourceTiles.forEach(sourceTile => {
+                let current = sourceTile;
+                let path = [];
+                const visited = new Set();
+
+                while (current && !current.isWater) {
+                    path.push(current);
+                    visited.add(`${current.col},${current.row}`);
+
+                    let neighbors = getNeighbors(current.col, current.row);
+                    let lowestNeighbor = null;
+                    let minElevation = current.elevation;
+
+                    neighbors.forEach(nCoord => {
+                        let neighbor = tileMap.get(`${nCoord.col},${nCoord.row}`);
+                        if (neighbor && !visited.has(`${neighbor.col},${neighbor.row}`)) {
+                            if (neighbor.elevation < minElevation) {
+                                minElevation = neighbor.elevation;
+                                lowestNeighbor = neighbor;
+                            }
+                        }
+                    });
+
+                    if (lowestNeighbor) {
+                        current.riverConnections.add(`${lowestNeighbor.col},${lowestNeighbor.row}`);
+                        lowestNeighbor.riverConnections.add(`${current.col},${current.row}`);
+                        current.riverVolume += 1;
+                        lowestNeighbor.riverVolume += 1;
+                        current = lowestNeighbor;
+                    } else {
+                        let backupNeighbors = neighbors.map(n => tileMap.get(`${n.col},${n.row}`)).filter(n => n);
+                        if (backupNeighbors.length > 0) {
+                            backupNeighbors.sort((a,b) => a.elevation - b.elevation);
+                            let escapeRoute = backupNeighbors[0];
+                            current.riverConnections.add(`${escapeRoute.col},${escapeRoute.row}`);
+                            escapeRoute.riverConnections.add(`${current.col},${current.row}`);
+                            current.riverVolume += 1;
+                            escapeRoute.riverVolume += 1;
+                            current = escapeRoute.isWater ? null : escapeRoute;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (path.length > 60) break;
+                }
+            });
+
+            return hexGrid;
+        }
+
+        // --- 2. PIXIJS RENDERING ---
+        const BIOME_COLORS = {
+            "Deep Ocean": 0x0f1b29,
+            "Coast": 0x1a3a54,
+            "Mountain": 0x474645,
+            "Hills": 0x61664d,
+            "Tundra": 0x93a398,
+            "Desert": 0xd4be87,
+            "Tropical Rainforest": 0x0d4721,
+            "Grassland": 0x3d6e2c,
+            "Plains": 0x51752c
+        };
+
+        let app;
+        let mapContainer;
+        let worldData;
+        const noise3D = createNoise3D();
+
+        async function init() {
+            app = new PIXI.Application();
+            await app.init({ 
+                resizeTo: window,
+                antialias: true,
+                backgroundColor: 0x070a0f 
+            });
+            document.getElementById('canvas-container').appendChild(app.canvas);
+
+            mapContainer = new PIXI.Container();
+            app.stage.addChild(mapContainer);
+
+            worldData = generateHexWorld(noise3D, MAP_COLS, MAP_ROWS);
+
+            setupMap();
+            window.addEventListener('resize', setupMap);
+        }
+
+        function setupMap() {
+            mapContainer.removeChildren();
+
+            const hexWidthRatio = Math.sqrt(3);
+            const totalWidthRequired = (MAP_COLS + 0.5) * hexWidthRatio;
+            const totalHeightRequired = (MAP_ROWS * 0.75) + 0.25;
+
+            const sizeViaWidth = (app.screen.width * 0.98) / totalWidthRequired;
+            const sizeViaHeight = (app.screen.height * 0.98) / (totalHeightRequired * 2);
+            
+            hexSize = Math.min(sizeViaWidth, sizeViaHeight);
+
+            const tileMap = new Map();
+            worldData.forEach(tile => tileMap.set(`${tile.col},${tile.row}`, tile));
+
+            worldData.forEach(tile => {
+                const center = hexToCartesian(tile.col, tile.row);
+                const tileGraphics = new PIXI.Graphics();
+                const color = BIOME_COLORS[tile.terrain] || 0xffffff;
+
+                tileGraphics.x = center.x;
+                tileGraphics.y = center.y;
+
+                tileGraphics.context
+                    .setStrokeStyle({ width: 0.3, color: 0x000000, alpha: 0.2 })
+                    .setFillStyle({ color: color });
+
+                const points = [];
+                for (let i = 0; i < 6; i++) {
+                    const angleDeg = 60 * i - 30;
+                    const angleRad = (Math.PI / 180) * angleDeg;
+                    points.push(hexSize * Math.cos(angleRad), hexSize * Math.sin(angleRad));
+                }
+                tileGraphics.poly(points).fill().stroke();
+
+                // Biome Texturing Effects
+                if (tile.isWater) {
+                    tileGraphics.context.setStrokeStyle({ width: 0.6, color: 0xffffff, alpha: 0.05 });
+                    tileGraphics.moveTo(-hexSize * 0.3, -hexSize * 0.1).lineTo(hexSize * 0.3, -hexSize * 0.1).stroke();
+                }
+
+                if (tile.terrain === "Mountain") {
+                    tileGraphics.context.setFillStyle({ color: 0x2e2d2c });
+                    tileGraphics.poly([0, -hexSize * 0.6, -hexSize * 0.6, hexSize * 0.4, 0, hexSize * 0.4]).fill();
+                    tileGraphics.context.setFillStyle({ color: 0x575554 });
+                    tileGraphics.poly([0, -hexSize * 0.6, hexSize * 0.6, hexSize * 0.4, 0, hexSize * 0.4]).fill();
+                    tileGraphics.context.setFillStyle({ color: 0xedf1f5 });
+                    tileGraphics.poly([0, -hexSize * 0.6, -hexSize * 0.2, -hexSize * 0.2, hexSize * 0.2, -hexSize * 0.2]).fill();
+                }
+
+                if (tile.terrain === "Hills") {
+                    tileGraphics.context.setStrokeStyle({ width: 0.8, color: 0x434734 }).setFillStyle({ color: color });
+                    tileGraphics.context.ellipse(-hexSize * 0.15, 0, hexSize * 0.25, hexSize * 0.15).fill().stroke();
+                }
+
+                if (tile.terrain === "Tropical Rainforest" || tile.terrain === "Grassland") {
+                    const count = tile.terrain === "Tropical Rainforest" ? 5 : 2;
+                    tileGraphics.context.setFillStyle({ color: tile.terrain === "Tropical Rainforest" ? 0x062b14 : 0x274a1b });
+                    for (let i = 0; i < count; i++) {
+                        const cx = Math.sin(tile.seed * 40 + i) * (hexSize * 0.3);
+                        const cy = Math.cos(tile.seed * 15 + i) * (hexSize * 0.3);
+                        tileGraphics.context.circle(cx, cy, hexSize * 0.15).fill();
+                    }
+                }
+
+                if (tile.terrain === "Desert") {
+                    tileGraphics.context.setStrokeStyle({ width: 0.7, color: 0xbfa774, alpha: 0.6 });
+                    tileGraphics.context.arc(-hexSize * 0.1, -hexSize * 0.1, hexSize * 0.25, 0, Math.PI * 0.5);
+                    tileGraphics.stroke();
+                }
+
+                // Render Connected Rivers
+                if (tile.riverVolume > 0 && !tile.isWater) {
+                    const strokeWidth = Math.max(1.2, Math.min(hexSize * 0.22, 0.8 + (tile.riverVolume * 0.15)));
+                    tileGraphics.context.setStrokeStyle({ width: strokeWidth, color: 0x4da6ff, cap: 'round', join: 'round' });
+
+                    tile.riverConnections.forEach(connKey => {
+                        const neighbor = tileMap.get(connKey);
+                        if (neighbor) {
+                            const neighborCenter = hexToCartesian(neighbor.col, neighbor.row);
+                            tileGraphics.moveTo(0, 0).lineTo((neighborCenter.x - center.x) * 0.5, (neighborCenter.y - center.y) * 0.5);
+                        }
+                    });
+                    tileGraphics.stroke();
+                }
+
+                mapContainer.addChild(tileGraphics);
+            });
+
+            mapContainer.x = (app.screen.width - mapContainer.width) / 2;
+            mapContainer.y = (app.screen.height - mapContainer.height) / 2;
+        }
+
+        init();
+    </script>
+</body>
+</html>
