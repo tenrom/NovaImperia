@@ -5,6 +5,7 @@ Number.prototype.clamp = function(min, max) {
 
 
 let tileSize=Math.round(800/(102/2*Math.sqrt(3)))
+let gridTiles
 
 const createNoise2D=window.createNoise2D 
 
@@ -26,35 +27,98 @@ document.getElementById('game').appendChild(app.view);
 let world = new PIXI.Container()
 app.stage.addChild(world)
 world.eventMode='static'
-world.scale.set(2);
+world.scale.set(Math.max(app.screen.width/(tileSize*Math.sqrt(3)/2*102),2));
 
 app.stage.hitArea = app.screen;
 
 let dragging = false
 let lastPos = null
 
+//Touch
+const pointers = new Map()
+let lastDistance = null
+
 app.stage.on('pointerdown', (e) => {
-    dragging = true
-    app.view.style.cursor = "grabbing"
-    lastPos = e.global.clone()
+    if (pointers.size === 2) {
+        pointers.set(e.pointerId, {
+            x: e.global.x,
+            y: e.global.y
+        });
+    } else {
+        dragging = true
+        app.view.style.cursor = "grabbing"
+        lastPos = e.global.clone()
+    }
 })
 
 app.stage.on('pointerup', () => {
-    dragging = false
-    app.view.style.cursor = "default"
+    if (pointers.size === 2) {
+        pointers.delete(e.pointerId)
+        lastDistance = null
+    } else{
+        dragging = false
+        app.view.style.cursor = "default"
+    }
 })
 
 app.stage.on('pointerupoutside', () => {
-    dragging = false
-    app.view.style.cursor = "default"
+    if (pointers.size === 2) {
+        pointers.delete(e.pointerId)
+        lastDistance = null
+    }else{
+        dragging = false
+        app.view.style.cursor = "default"
+    }
 })
 
 app.stage.on('pointermove', (e) => {
-    if (!dragging) return
-    const pos = e.global
-    world.x = (world.x + (pos.x - lastPos.x))
-    world.y = (world.y + (pos.y - lastPos.y)).clamp(-tileSize*world.scale.x*75+app.screen.height,0)
-    lastPos = pos.clone()
+    if (pointers.size === 2) {
+        if (!pointers.has(e.pointerId)) return
+
+        pointers.set(e.pointerId, {
+            x: e.global.x,
+            y: e.global.y
+        });
+
+        const [p1, p2] = [...pointers.values()]
+
+        const distance = distanceEucl(p2,p1)
+
+        if (lastDistance === null) {
+            lastDistance = distance
+            return
+        }
+        const zoomFactor = distance / lastDistance
+        const center = {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2
+        }
+        const worldPosBefore = {
+            x: (center.x - world.x) / world.scale.x,
+            y: (center.y - world.y) / world.scale.y
+        }
+        let scale = world.scale.x * zoomFactor
+
+        scale=scale.clamp(Math.max(app.screen.width/(tileSize*Math.sqrt(3)/2*102),2),20)
+
+        world.scale.set(scale)
+
+        const worldPosAfter = {
+            x: (center.x - world.x) / world.scale.x,
+            y: (center.y - world.y) / world.scale.y
+        }
+
+        world.x += (worldPosAfter.x - worldPosBefore.x) * world.scale.x
+        world.y += (worldPosAfter.y - worldPosBefore.y) * world.scale.y
+
+        lastDistance = distance;
+    }else{
+        if (!dragging) return
+        const pos = e.global
+        world.x = (world.x + (pos.x - lastPos.x))
+        world.y = (world.y + (pos.y - lastPos.y)).clamp(-tileSize*world.scale.x*75+app.screen.height,0)
+        lastPos = pos.clone()
+    }
 })
 
 app.stage.on('wheel', (e) => {
@@ -69,8 +133,7 @@ app.stage.on('wheel', (e) => {
     const zoomSpeed = 0.1;
 
     scale *= (e.deltaY < 0) ? (1 + zoomSpeed) : (1 - zoomSpeed);
-    scale=scale.clamp(2,20)
-    console.log(app.screen.width,tileSize*102)
+    scale=scale.clamp(Math.max(app.screen.width/(tileSize*Math.sqrt(3)/2*102),2),20)
 
     world.scale.set(scale);
 
@@ -84,13 +147,23 @@ app.stage.on('wheel', (e) => {
 
 });
 
+let offsetTile=0
 // const WORLD_WIDTH = 12000;
 app.ticker.add(() => {
     // let o=app.screen.width+tileSize
     // if (world.x < -WORLD_WIDTH+o) world.x += WORLD_WIDTH-o;
     // if (world.x > 0) world.x -= WORLD_WIDTH-o;
     world.y=world.y.clamp(-tileSize*world.scale.x*75+app.screen.height,0)
-    world.x=world.x.clamp(-tileSize*Math.sqrt(3)/2*102*world.scale.x+app.screen.width,0)
+    world.x=world.x.clamp(-2*tileSize*Math.sqrt(3)/2*102*world.scale.x+app.screen.width,tileSize*Math.sqrt(3)/2*102*world.scale.x)
+    
+    let offsetWorld=Math.round(world.x/(tileSize*Math.sqrt(3)/2*world.scale.x))
+    let lastOffsetTile=offsetTile
+    offsetTile=-offsetWorld
+    warpTiles(lastOffsetTile,offsetTile)
+
+    if (app.screen.width-world.x<=0 || world.x<=-tileSize*Math.sqrt(3)/2*102*world.scale.x){
+        resetWrap()
+    }
 });
 
 let map = new PIXI.Container()
@@ -277,12 +350,14 @@ class GridTile extends PIXI.Sprite{
     constructor(parentPos,coord,size) {
         super(tileTexture)
 
-        this.coord=coord
-        this.width=size
-        this.height=size
-        let coordHex = getCoordHex(this.coord,size)
-        this.x=parentPos[0]+coordHex[0]
-        this.y=parentPos[1]+coordHex[1]
+        this.origCoord=coord
+        this.coord=this.origCoord
+        this.size=size
+        this.parentPos=parentPos
+        this.width=this.size
+        this.height=this.size
+        
+        this.UpdatePosition()
 
         this.anchor.set(0.5,0.5)
         let pointsHitBox=[]
@@ -309,20 +384,20 @@ class GridTile extends PIXI.Sprite{
         
         this.addChild(this.polyBorder);
 
-        // if (coord[0]===0 || coord[0]===101 || coord[1]===0 || coord[1]===99){
-        //     this.debugLabel = new PIXI.Text(`${this.coord[0]},${this.coord[1]}`,{
-        //             fontSize: size/5,
-        //             fill: "#ffffff",
-        //             stroke: "#000000",
-        //             strokeThickness:2
-        //         }
-        //     )
+        this.debugLabel = new PIXI.Text(`${this.origCoord[0]},${this.origCoord[1]}`,{
+                fontSize: 80,
+                fill: "#ffffff",
+                stroke: "#000000",
+                strokeThickness:2
+            }
+        )
 
-        //     this.debugLabel.x = this.x - this.debugLabel.width/2
-        //     this.debugLabel.y = this.y - this.debugLabel.height/2
+        this.debugLabel.x = -this.debugLabel.width/2
+        this.debugLabel.y = -this.debugLabel.height/2
 
-        //     world.addChild(this.debugLabel)
-        // }
+        this.addChild(this.debugLabel)
+        this.debugLabel.visible=false
+        
         // this.debugLabel = new PIXI.Text(`${this.coord[0]},${this.coord[1]}`,{
         //         fontSize: size/5,
         //         fill: "#ffffff",
@@ -353,15 +428,76 @@ class GridTile extends PIXI.Sprite{
                 ease: "power2.inOut"
             });
         })
+
+        this.on('click',()=>{
+            console.log(this.origCoord)
+            this.debugLabel.visible=false
+            setTimeout(()=>{
+                this.debugLabel.visible=false
+            },1000)
+        })
+    }
+    UpdatePosition(){
+        let coordHex = getCoordHex(this.coord,this.size)
+        this.x=this.parentPos[0]+coordHex[0]
+        this.y=this.parentPos[1]+coordHex[1]
+    }
+}
+
+function warpTiles(l,n){
+    let index
+    let d=n-l
+    if (d<0){
+        for (let i=0;i<-d;i++){
+            if (l-i<=0){
+                index=101+l-i
+            }else{
+                index=l-i-1
+            }
+            for (let t in gridTiles[index]){
+                let tile=gridTiles[index][t]
+                tile.coord=[tile.coord[0]-102,tile.coord[1]]
+                tile.UpdatePosition()
+            }
+        }
+    }else if (d>0){
+        for (let i=0;i<d;i++){
+            if (l+i>=0){
+                index=l+i
+            }else{
+                index=102+l+i
+            }
+            for (let t in gridTiles[index]){
+                let tile=gridTiles[index][t]
+                tile.coord=[tile.coord[0]+102,tile.coord[1]]
+                tile.UpdatePosition()
+            }
+        }
+    }
+}
+
+function resetWrap(){
+    let lastOffsetTile=offsetTile
+    offsetTile=0
+    warpTiles(lastOffsetTile,offsetTile)
+
+    if (lastOffsetTile>0){
+        world.x+=tileSize*Math.sqrt(3)/2*102*world.scale.x
+    }else{
+        world.x-=tileSize*Math.sqrt(3)/2*102*world.scale.x
     }
 }
 
 function createGrid(container,coord,size){
+    let gridTiles=[]
     for (let x=0;x<size[0];x++){
+        let col=[]
         for (let y=0;y<size[1];y++){
             let tile=new GridTile([coord[0]+tileSize/2*Math.sqrt(3)/2,coord[1]+tileSize/2],[x,y],tileSize)
             container.addChild(tile)
+            col.push(tile)
         }
+        gridTiles.push(col)
     }
     //let seed="1782128928507"
     //let seed="1782128973226" //Snow
@@ -389,7 +525,7 @@ function createGrid(container,coord,size){
 
     mapSpriteLeft.width=800
     mapSpriteLeft.height=800
-    mapSpriteLeft.x=-800
+    mapSpriteLeft.x=-tileSize*Math.sqrt(3)/2*102
     mapSpriteLeft.y=-(800-tileSize*75)/2
 
     let mapSprite = new PIXI.Sprite(mapTexture)
@@ -406,12 +542,14 @@ function createGrid(container,coord,size){
 
     mapSpriteRight.width=800
     mapSpriteRight.height=800
-    mapSpriteRight.x=800
+    mapSpriteRight.x=tileSize*Math.sqrt(3)/2*102
     mapSpriteRight.y=-(800-tileSize*75)/2
+
+    return gridTiles
 }
 
 
-createGrid(grid,[0,0],[102,100])
+gridTiles = createGrid(grid,[0,0],[102,100])
 
 
 ///////// CREATE TEXTURE TILE /////////
