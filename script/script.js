@@ -11,6 +11,8 @@ let mapSpriteLeft
 let mapSprite
 let mapSpriteRight
 let pixels
+let imageDataMap
+let pixelsMountain
 
 let pointsOut=[]
 let pointsHitBox=[]
@@ -263,9 +265,8 @@ const canvas = document.getElementById("perlinNoise");
 canvas.width=sizeCanvas
 canvas.height=sizeCanvas
 const ctx = canvas.getContext("2d");
-const imageData = ctx.createImageData(sizeCanvas,sizeCanvas);
 
-function setPixel(x, y, color, a = 255) {
+function setPixel(imageData, x, y, color, a = 255) {
     const index = (y * imageData.width + x) * 4;
     imageData.data[index] = color[0];     // R
     imageData.data[index + 1] = color[1]; // G
@@ -273,7 +274,7 @@ function setPixel(x, y, color, a = 255) {
     imageData.data[index + 3] = a; // A
 }
 
-function DebugTile(){
+function DebugTile(imageData){
     const texture = PIXI.Texture.fromBuffer(
         imageData.data,
         imageData.width,
@@ -341,8 +342,12 @@ class PerlinNoise{
         this.steps=cfg.steps
         this.centralised=cfg.centralised
         this.circleDistance=cfg.circleDistance
+
+        this.cfg=cfg
     }
     createPerlinNoise(x1,x2,y1,y2){
+        this.imageData = ctx.createImageData(sizeCanvas,sizeCanvas)
+
         let mapPixels=[]
         this.size=[x2-x1,y2-y1]
         for (let x=Math.max(0,x1);x<Math.min(x2,sizeCanvas);x++){
@@ -397,44 +402,56 @@ class PerlinNoise{
                 let color
                 let ci
                 if (this.colorised){
+                    let factor=1
                     if (value < this.steps[0]) {
                         ci=0
                         color = [11, 29, 58]      // deep ocean
+                        factor=((value-0)/(this.steps[0]-0)*alphaDistance*0.2+0.8)
                     } else if (value < this.steps[1]) {
                         ci=1
                         color = [18, 63, 107]     // ocean
+                        factor=(value-this.steps[0])/(this.steps[1]-this.steps[0])*0.3+0.7
                     } else if (value < this.steps[2]) {
                         ci=2
                         color = [217, 194, 138]   // sand
+                        factor=((value-this.steps[1])/(this.steps[2]-this.steps[1])*0.2+0.85).clamp(0,1)
                     } else if (value < this.steps[3]) {
                         ci=3
                         color = [79, 139, 58]     // plain
+                        //hills 63, 111, 47
+                        factor=(1-(value-this.steps[2])/(this.steps[3]-this.steps[2]))*0.3+0.7
                     } else if (value < this.steps[4]) {
                         ci=4
-                        color = [63, 111, 47]     // hills
-                    } else if (value < this.steps[5]) {
-                        ci=5
-                        color = [110, 106, 99]    // mountain
+                        color = [148,128,119]   // mountain [110, 106, 99]
+                        factor=(value-this.steps[3])/(this.steps[4]-this.steps[3])*0.3+0.7
                     } else {
-                        ci=6
+                        ci=5
                         color = [242, 246, 251]  // snow
+                        factor=(value-this.steps[4])/(1-this.steps[4])*0.3+0.9
                     }
+                    color=[color[0]*factor,color[1]*factor,color[2]*factor]
                 }else{
                     const a=value*255
                     color=[a,a,a]
+                    ci=value
                 }
-                setPixel(x,y,color)
+                setPixel(this.imageData,x,y,color)
                 col[y]=ci
             }
             mapPixels.push(col)
         }
-        const texture = PIXI.Texture.fromBuffer(
-            imageData.data,
-            imageData.width,
-            imageData.height
-        )
-        return [mapPixels,texture]
+
+        return [mapPixels,this.imageData]
     }
+}
+
+function getTextureFromImageData(imgData){
+    const texture = PIXI.Texture.fromBuffer(
+        imgData.data,
+        imgData.width,
+        imgData.height
+    )
+    return texture
 }
 
 let tileTexture = PIXI.Texture.from("data/tileHex.png")
@@ -555,6 +572,7 @@ class GridTile extends PIXI.Sprite{
         // this.on('pointercancel', pointerOut);
 
         this.unitSprite
+        this.walkable
 
         this.on('click',()=>{
             if (!isDrag){
@@ -565,16 +583,16 @@ class GridTile extends PIXI.Sprite{
                 // for (let x=0;x<9;x++){
                 //     for (let y=0;y<9;y++){
                 //         if (!ig.includes(`${x};${y}`)){
-                //             setPixel((Math.floor(this.origCoordHex[0])+x)%795,Math.floor(this.origCoordHex[1])+y+Math.round((800-tileSize*75)/2),[255,255,0])
+                //             setPixel(imageDataMap,(Math.floor(this.origCoordHex[0])+x)%795,Math.floor(this.origCoordHex[1])+y+Math.round((800-tileSize*75)/2),[255,255,0])
                 //             let gridX=(Math.floor(this.origCoordHex[0])+x)%795
                 //             let gridY=Math.floor(this.origCoordHex[1])+y+Math.round((800-tileSize*75)/2)
                 //             this.pixelsTile.push(pixels[gridX][gridY])
                 //         }
                 //     }
                 // }
-                // DebugTile()
+                // DebugTile(imageDataMap)
 
-                let type=['deep ocean','ocean','sand','plain','hills','mountain','snow']
+                let type=['deep ocean','ocean','sand','plain','mountain','snow']
                 console.log(this.origCoord,type[this.typeIndex])
             }else{
                 isDrag=false
@@ -608,11 +626,16 @@ class GridTile extends PIXI.Sprite{
                 }
             }
             this.typeIndex=getTypeFromPixels(this.pixelsTile)
+
+            if (this.typeIndex>3){
+                this.walkable=false
+            }else{
+                this.walkable=true
+            }
         }
     }
     Select(){
         //Case
-        if (selectedTile && selectedTile!==this) selectedTile.UnSelect()
         selectedTile=this
 
         polyBorderSelected.position.copyFrom(this.position)
@@ -622,8 +645,13 @@ class GridTile extends PIXI.Sprite{
         //Unité
         console.log(isInList(this.origCoord,moveTiles))
         if (isInList(this.origCoord,moveTiles)){
+            //Move unit
+            moveTiles=[]
             selectedUnit.moveTo(this.origCoord)
+            //Hide
             polyBorderMoves.clear()
+            selectedTile=null
+            polyBorderSelected.alpha=0
         }else{
             selectedUnit=null
             moveTiles=[]
@@ -638,9 +666,6 @@ class GridTile extends PIXI.Sprite{
         }
 
         
-    }
-    UnSelect(){
-        polyBorderSelected.alpha=0
     }
     addUnit(u){
         this.unitSprite=u
@@ -855,7 +880,7 @@ function resetWrap(){
 function createGrid(container,coord,size){
     //let seed="1782128928507"
     //let seed="1782128973226" //Snow
-    let seed="julie"
+    let seed="azertyuiopqsdfghjklmwxcvbn"
     let config={
     //Default
         scale:0.005,
@@ -864,7 +889,7 @@ function createGrid(container,coord,size){
         inversed:false,
         warp:true,
         colorised:true,
-        steps:[0.14,0.19,0.24,0.35,0.5,0.6],
+        steps:[0.14,0.19,0.24,0.5,0.6],
         centralised:true,
         circleDistance:200
     }
@@ -872,7 +897,8 @@ function createGrid(container,coord,size){
     let perlinNoise= new PerlinNoise(seed,config)
     const result=perlinNoise.createPerlinNoise(0,800,0,800)
     pixels=result[0]
-    const mapTexture=result[1]
+    imageDataMap=result[1]
+    const mapTexture=getTextureFromImageData(imageDataMap)
 
     mapSpriteLeft = new PIXI.Sprite(mapTexture)
     map.addChild(mapSpriteLeft)
@@ -899,6 +925,22 @@ function createGrid(container,coord,size){
     mapSpriteRight.x=tileSize*Math.sqrt(3)/2*102
     mapSpriteRight.y=-(800-tileSize*75)/2
 
+    let seedMountain=seed+"Mountain"
+    let configMountain={
+        scale:0.01,
+        octaves:2,
+        ridged:true,
+        inversed:false,
+        warp:true,
+        colorised:true,
+        steps:[0,0,0,0.1,0.2],
+        centralised:false
+    }
+
+    let perlinNoiseMountain = new PerlinNoise(seedMountain,configMountain)
+    const resultMountain=perlinNoiseMountain.createPerlinNoise(0,800,0,800)
+    pixelsMountain=resultMountain[0]
+
     let gridTiles=[]
     for (let x=0;x<size[0];x++){
         let col=[]
@@ -915,6 +957,7 @@ function createGrid(container,coord,size){
 
 
 gridTiles = createGrid(grid,[0,0],[102,100])
+
 
 
 ///////// CREATE TEXTURE TILE /////////
@@ -958,16 +1001,30 @@ class Unit extends PIXI.Sprite{
         this.tileCoord=[-1,-1]
 
         this.eventMode='none'
+        
+        this.totalMoveCount=5
+        this.moveCount
     }
     getMovesTiles(){
-        
-        return getCoordNeighbors(this.tileCoord)
-
-        let m=[]
-        for (let i=0;i<102;i++){
-            if (i!==this.tileCoord[0]) m.push([i,this.tileCoord[1]])
+        let moveT=[]
+        let openL=[this.tileCoord]
+        for (let i=0;i<this.totalMoveCount+1;i++){
+            console.log("Distance:",i)
+            let l=[]
+            for (let t=0;t<openL.length;t++){
+                let c=openL[t]
+                moveT.push(c)
+                for (let e of getCoordNeighbors(c)){
+                    if (!isInList(e,moveT.concat(openL,l)) && getTileFromCoord(e).walkable) l.push(e)
+                }
+            }
+            openL=l
         }
-        return m
+        moveT.splice(moveT.indexOf(this.tileCoord),1)
+
+        console.log(moveT)
+
+        return moveT
     }
     moveTo(c){
         getTileFromCoord(this.tileCoord).removeUnit()
