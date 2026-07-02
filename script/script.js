@@ -880,7 +880,7 @@ function resetWrap(){
 function createGrid(container,coord,size){
     //let seed="1782128928507"
     //let seed="1782128973226" //Snow
-    let seed="azertyuiopqsdfghjklmwxcvbn"
+    let seed="1782128973226"
     let config={
     //Default
         scale:0.005,
