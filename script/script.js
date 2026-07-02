@@ -274,6 +274,11 @@ function setPixel(imageData, x, y, color, a = 255) {
     imageData.data[index + 3] = a; // A
 }
 
+function getPixel(imageData, x, y) {
+    const index = (y * imageData.width + x) * 4;
+    return [imageData.data[index],imageData.data[index + 1],imageData.data[index + 2]]
+}
+
 function DebugTile(imageData){
     const texture = PIXI.Texture.fromBuffer(
         imageData.data,
@@ -322,8 +327,11 @@ class PerlinNoise{
             //steps:[0.25,0.30,0.35,0.55,0.70,0.85]
             //steps:[0.20,0.25,0.29,0.5,0.6,0.8]
             steps:[0.14,0.19,0.24,0.35,0.5,0.6],
-            centralised:true,
-            circleDistance:200
+            centralized:true,
+            circleDistance:200,
+            decentralized:false,
+            extendCenter:false,
+            distance:200
         }
 
         const cfg = {...defaults,...config}
@@ -340,8 +348,11 @@ class PerlinNoise{
         this.warpStrength=cfg.warpStrength
         this.colorised=cfg.colorised
         this.steps=cfg.steps
-        this.centralised=cfg.centralised
+        this.centralized=cfg.centralized
         this.circleDistance=cfg.circleDistance
+        this.decentralized=cfg.decentralized
+        this.extendCenter=cfg.extendCenter
+        this.distance=cfg.distance
 
         this.cfg=cfg
     }
@@ -386,10 +397,25 @@ class PerlinNoise{
                     frequency *= this.lacunarity
                     amplitude *= this.persistence
                 }
-                let alphaDistance=1-(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.circleDistance/(this.scale*100))).clamp(0,1)
-                if (!this.centralised){
-                    alphaDistance=1
+                let alphaDistance=1
+                if (this.centralized){
+                    alphaDistance=1-(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.circleDistance/(this.scale*100))).clamp(0,1)
                 }
+
+                if (this.decentralized && this.centralized){
+                    if (this.extendCenter){
+                        alphaDistance=Math.min((Math.abs(sizeCanvas/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
+                    }else{
+                        alphaDistance=Math.min((distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
+                    }
+                }else if (this.decentralized){
+                    if (this.extendCenter){
+                        alphaDistance=(Math.abs(sizeCanvas/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1)
+                    }else{
+                        alphaDistance=(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1)
+                    }
+                } 
+                
                 let value=(s/d)*alphaDistance
                 if (this.ridged){
                     value=Math.abs(value)
@@ -452,6 +478,26 @@ function getTextureFromImageData(imgData){
         imgData.height
     )
     return texture
+}
+
+function mixColor(a,b){
+    return [(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2]
+}
+
+function mergeImageData(imgData1,imgData2,pixels1,pixels2){
+    for (let x=0;x<pixels2.length;x++){
+        for (let y=0;y<pixels2[x].length;y++){
+            if (pixels2[x][y]!==0){
+                // if (pixels1[x][y]===1 && pixels2[x][y]===1){
+                //     setPixel(imgData1,x,y,mixColor(getPixel(imgData1,x,y),getPixel(imgData2,x,y)))
+                // }else 
+                if (pixels1[x][y]===3){
+                    setPixel(imgData1,x,y,getPixel(imgData2,x,y))
+                } 
+            }
+        }
+    }
+    return imgData1
 }
 
 let tileTexture = PIXI.Texture.from("data/tileHex.png")
@@ -574,7 +620,7 @@ class GridTile extends PIXI.Sprite{
         this.unitSprite
         this.walkable
 
-        this.on('click',()=>{
+        this.on('pointertap',()=>{
             if (!isDrag){
                 this.Select()
 
@@ -890,7 +936,7 @@ function createGrid(container,coord,size){
         warp:true,
         colorised:true,
         steps:[0.14,0.19,0.24,0.5,0.6],
-        centralised:true,
+        centralized:true,
         circleDistance:200
     }
 
@@ -898,6 +944,28 @@ function createGrid(container,coord,size){
     const result=perlinNoise.createPerlinNoise(0,800,0,800)
     pixels=result[0]
     imageDataMap=result[1]
+
+    //Mountains
+    let seedMountain=seed+"Mountain"
+    let configMountain={
+        scale:0.02,
+        octaves:4,
+        ridged:true,
+        inversed:false,
+        warp:true,
+        colorised:true,
+        steps:[0.3,0.3,0.3,0.3,0.5],
+        centralized:false,
+        circleDistance:300,
+    }
+
+    let perlinNoiseMountain = new PerlinNoise(seedMountain,configMountain)
+    const resultMountain=perlinNoiseMountain.createPerlinNoise(0,800,0,800)
+    pixelsMountain=resultMountain[0]
+    imageDataMountain=resultMountain[1]
+
+    //Generate Texture
+    //mergeImageData(imageDataMap,imageDataMountain,pixels,pixelsMountain)
     const mapTexture=getTextureFromImageData(imageDataMap)
 
     mapSpriteLeft = new PIXI.Sprite(mapTexture)
@@ -925,21 +993,14 @@ function createGrid(container,coord,size){
     mapSpriteRight.x=tileSize*Math.sqrt(3)/2*102
     mapSpriteRight.y=-(800-tileSize*75)/2
 
-    let seedMountain=seed+"Mountain"
-    let configMountain={
-        scale:0.01,
-        octaves:2,
-        ridged:true,
-        inversed:false,
-        warp:true,
-        colorised:true,
-        steps:[0,0,0,0.1,0.2],
-        centralised:false
-    }
 
-    let perlinNoiseMountain = new PerlinNoise(seedMountain,configMountain)
-    const resultMountain=perlinNoiseMountain.createPerlinNoise(0,800,0,800)
-    pixelsMountain=resultMountain[0]
+    mapMountain = new PIXI.Sprite(getTextureFromImageData(imageDataMountain))
+    //map.addChild(mapMountain)
+
+    mapMountain.width=800
+    mapMountain.height=800
+    mapMountain.x=0
+    mapMountain.y=-(800-tileSize*75)/2
 
     let gridTiles=[]
     for (let x=0;x<size[0];x++){
