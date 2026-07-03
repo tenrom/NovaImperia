@@ -1063,7 +1063,7 @@ class Unit extends PIXI.Sprite{
 
         this.eventMode='none'
         
-        this.totalMoveCount=5
+        this.totalMoveCount=3
         this.moveCount
     }
     getMovesTiles(){
