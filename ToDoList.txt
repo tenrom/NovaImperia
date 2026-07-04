@@ -1,0 +1,43 @@
+THINGS TO DO
+-Placement ressources
+-Villes
+    -Affichage
+    -Habitants
+    -Nourriture
+    -Production
+    -Science
+    -Expansion
+-Unités 
+    -Combat https://civilization.fandom.com/wiki/Combat_(Civ6)
+    -Promotion 
+    -Fusion unité (Armée / Régiment) https://www.reddit.com/r/civ/comments/13qvn26/a_short_comprehensive_guide_on_corps_fleets/?tl=fr / https://civilization.fandom.com/fr/wiki/Unit%C3%A9_(Civ6)
+-Production/Achat Unités
+-Quartiers
+-Bonus proximité quartiers
+-Production bâtiments
+-Arbre Technologique
+-Personnages illustres
+-Merveilles artificielles
+-Merveilles naturels
+-Arbre dogmatique
+-Cités Etats
+
+THINGS TO NOT DO
+-Activité, attrait, tourisme, culture
+-Religion
+-Coût d'entretien
+
+
+All units type:
+-Recon
+-Melee
+-Ranged
+-Anti-Cavalry
+-Light Cavalry
+-Siege
+-Heavy Cavalry
+-Naval Melee
+-Naval Raider
+-Aircraft Fighter
+-Aircraft Bomber
+-Naval Ranged

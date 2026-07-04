@@ -414,7 +414,7 @@ class PerlinNoise{
                     }else{
                         alphaDistance=(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1)
                     }
-                } 
+                }
                 
                 let value=(s/d)*alphaDistance
                 if (this.ridged){
@@ -924,9 +924,10 @@ function resetWrap(){
 }
 
 function createGrid(container,coord,size){
-    //let seed="1782128928507"
+    let seed="1782128928507"
     //let seed="1782128973226" //Snow
-    let seed="1782128973226"
+    //let seed="1782128973226"
+    // let seed=Date.now()
     let config={
     //Default
         scale:0.005,
@@ -997,8 +998,8 @@ function createGrid(container,coord,size){
     mapMountain = new PIXI.Sprite(getTextureFromImageData(imageDataMountain))
     //map.addChild(mapMountain)
 
-    mapMountain.width=800
-    mapMountain.height=800
+    mapMountain.width=500
+    mapMountain.height=500
     mapMountain.x=0
     mapMountain.y=-(800-tileSize*75)/2
 

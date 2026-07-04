@@ -14,3 +14,5 @@ function nbDistrictByHabitant(nh){
         return 3+Math.floor((nh-7)/3)
     }
 }
+
+// Corompable / Defense
