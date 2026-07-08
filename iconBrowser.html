@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+<meta charset="utf-8">
+<title>Civ 6 Icons Browser</title>
+<link rel="shortcut icon" href="https://static.wikia.nocookie.net/civilization/images/9/99/Market_%28Civ6%29.png/revision/latest?cb=20201203200053" type="image/x-icon">
+
+<style>
+
+body {
+    font-family: Arial, sans-serif;
+    background:#222;
+    color:#eee;
+    margin:20px;
+}
+
+input, select, button {
+    width:100%;
+    padding:10px;
+    margin:5px 0;
+    background:#333;
+    color:white;
+    border:1px solid #555;
+}
+
+button {
+    cursor:pointer;
+}
+
+#status {
+    background:#111;
+    padding:10px;
+    height:160px;
+    overflow:auto;
+    white-space:pre-wrap;
+}
+
+#grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+    gap:12px;
+    margin-top:15px;
+}
+
+.card {
+    background:#333;
+    padding:10px;
+    border-radius:8px;
+    text-align:center;
+}
+
+.card img {
+    width:64px;
+    height:64px;
+    object-fit:contain;
+    cursor:pointer;
+}
+
+.name {
+    font-size:12px;
+    margin-top:8px;
+    word-break:break-word;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<h2>Civilization VI Icons Browser</h2>
+
+
+<div id="status">
+Ready
+</div>
+
+
+<input id="search"
+placeholder="Search Civ6 images..." style="width:calc(100% - 22px)">
+
+<button id="loadJson">
+Load JSON Cache
+</button>
+
+<button id="exportCache">
+Export JSON Cache
+</button>
+
+<select id="category">
+
+<option value="all">
+All
+</option>
+
+<option value="Resources">
+Resources
+</option>
+
+<option value="Units">
+Units
+</option>
+
+<option value="Buildings">
+Buildings
+</option>
+
+<option value="Districts">
+Districts
+</option>
+
+<option value="Improvements">
+Improvements
+</option>
+
+<option value="Technologies">
+Technologies
+</option>
+
+<option value="Civics">
+Civics
+</option>
+
+<option value="Leaders">
+Leaders
+</option>
+
+<option value="Civilizations">
+Civilizations
+</option>
+
+<option value="Wonders">
+Wonders
+</option>
+
+<option value="Other">
+Other
+</option>
+
+</select>
+
+
+
+
+<div id="grid"></div>
+
+<script>
+
+const API =
+"https://civilization.fandom.com/api.php?origin=*";
+
+
+const status =
+document.getElementById("status");
+
+const grid =
+document.getElementById("grid");
+
+const search =
+document.getElementById("search");
+
+const category =
+document.getElementById("category");
+
+
+const exportCache =
+document.getElementById("exportCache");
+
+
+const loadJson =
+document.getElementById("loadJson");
+
+
+
+const CACHE_KEY =
+"civ6_images_cache_v3";
+
+const CATEGORY_CACHE_KEY =
+"civ6_categories_cache_v3";
+
+const FILE_CATEGORY_CACHE =
+"civ6_file_categories_v3";
+
+
+
+let images=[];
+
+
+let categorized={
+
+Resources:[],
+Units:[],
+Buildings:[],
+Districts:[],
+Improvements:[],
+Technologies:[],
+Civics:[],
+Leaders:[],
+Civilizations:[],
+Wonders:[],
+Other:[]
+
+};
+
+
+
+function log(...msg){
+
+console.log(...msg);
+
+status.textContent +=
+"\n"+msg.join(" ");
+
+status.scrollTop =
+status.scrollHeight;
+
+}
+
+
+
+/*
+ Load JSON cache file
+*/
+
+loadJson.onclick = () => {
+
+    const input =
+    document.createElement("input");
+
+    input.type = "file";
+    input.accept = ".json";
+
+
+    input.onchange = e => {
+
+        const file =
+        e.target.files[0];
+
+
+        if (!file)
+            return;
+
+
+        const reader =
+        new FileReader();
+
+
+        reader.onload = () => {
+
+            const data =
+            JSON.parse(reader.result);
+
+
+            if (!data.images || !data.categories) {
+
+                alert("Invalid Civ6 cache file");
+                return;
+
+            }
+
+
+            images =
+            data.images;
+
+
+            categorized =
+            data.categories;
+
+
+
+            localStorage.setItem(
+                CACHE_KEY,
+                JSON.stringify(images)
+            );
+
+
+            localStorage.setItem(
+                CATEGORY_CACHE_KEY,
+                JSON.stringify(categorized)
+            );
+
+
+            log(
+                "JSON imported:",
+                images.length,
+                "images"
+            );
+
+
+            render();
+
+        };
+
+
+        reader.readAsText(file);
+
+    };
+
+
+    input.click();
+
+};
+
+
+
+
+/*
+ Export cache
+*/
+
+exportCache.onclick = () => {
+
+
+const data={
+
+generated:
+new Date().toISOString(),
+
+total:
+images.length,
+
+images,
+
+categories:
+categorized
+
+};
+
+
+
+const blob =
+new Blob(
+[
+JSON.stringify(
+data,
+null,
+2
+)
+],
+{
+type:"application/json"
+}
+);
+
+
+
+const url =
+URL.createObjectURL(blob);
+
+
+
+const a =
+document.createElement("a");
+
+
+a.href=url;
+
+a.download =
+"civ6_cache.json";
+
+
+a.click();
+
+
+URL.revokeObjectURL(url);
+
+
+};
+
+
+
+
+
+
+
+async function getFileCategories(title){
+
+
+let cache =
+JSON.parse(
+localStorage.getItem(FILE_CATEGORY_CACHE)
+|| "{}"
+);
+
+
+
+if(cache[title])
+return cache[title];
+
+
+
+let url =
+API+
+"&action=query"+
+"&prop=categories"+
+"&cllimit=50"+
+"&titles=File:"+
+encodeURIComponent(title)+
+"&format=json";
+
+
+
+let data =
+await fetch(url)
+.then(r=>r.json());
+
+
+
+let result=[];
+
+
+let pages =
+data.query?.pages;
+
+
+
+if(pages){
+
+let page =
+Object.values(pages)[0];
+
+
+result =
+(page.categories || [])
+.map(c =>
+c.title.toLowerCase()
+);
+
+}
+
+
+
+cache[title]=result;
+
+
+localStorage.setItem(
+FILE_CATEGORY_CACHE,
+JSON.stringify(cache)
+);
+
+
+return result;
+
+}
+
+
+
+
+
+function detectCategory(categories,name){
+
+
+let text =
+(categories.join(" ")
++" "
++name)
+.toLowerCase();
+
+
+
+if(text.includes("resource"))
+return "Resources";
+
+
+if(text.includes("unit"))
+return "Units";
+
+
+if(text.includes("building"))
+return "Buildings";
+
+
+if(text.includes("district"))
+return "Districts";
+
+
+if(text.includes("improvement"))
+return "Improvements";
+
+
+if(text.includes("technology")
+|| text.includes("tech"))
+return "Technologies";
+
+
+if(text.includes("civic"))
+return "Civics";
+
+
+if(text.includes("leader"))
+return "Leaders";
+
+
+if(text.includes("civilization"))
+return "Civilizations";
+
+
+if(text.includes("wonder"))
+return "Wonders";
+
+
+return "Other";
+
+}
+
+
+
+
+
+async function classifyImages(){
+
+
+let count=0;
+
+
+for(const img of images){
+
+
+let cats =
+await getFileCategories(
+img.name
+);
+
+
+
+let group =
+detectCategory(
+cats,
+img.name
+);
+
+
+
+categorized[group].push(img);
+
+
+
+count++;
+
+
+if(count%50===0)
+log(
+"Categorized",
+count,
+"/",
+images.length
+);
+
+
+}
+
+
+}
+
+
+
+
+
+async function loadImages(){
+
+
+    const savedImages =
+    localStorage.getItem(CACHE_KEY);
+
+
+    const savedCategories =
+    localStorage.getItem(CATEGORY_CACHE_KEY);
+
+
+
+    /*
+       Existing cache:
+       DO NOT classify again
+    */
+
+    if(savedImages && savedCategories){
+
+
+        log("Loading existing cache");
+
+
+        images =
+        JSON.parse(savedImages);
+
+
+        categorized =
+        JSON.parse(savedCategories);
+
+
+        render();
+
+        return;
+
+    }
+
+
+
+    /*
+       No cache:
+       Build everything
+    */
+
+
+    log(
+        "Building new cache from wiki..."
+    );
+
+
+    let cont="";
+
+
+
+    do {
+
+
+        let url =
+        API+
+        "&action=query"+
+        "&list=allimages"+
+        "&ailimit=500"+
+        "&aiprop=url"+
+        "&format=json";
+
+
+
+        if(cont)
+            url +=
+            "&aicontinue="+
+            encodeURIComponent(cont);
+
+
+
+        let data =
+        await fetch(url)
+        .then(r=>r.json());
+
+
+
+        images.push(
+            ...data.query.allimages
+        );
+
+
+
+        log(
+            "Fetched",
+            images.length
+        );
+
+
+
+        cont =
+        data.continue?.aicontinue || "";
+
+
+    }
+    while(cont);
+
+
+
+
+    images =
+    images.filter(i =>
+        i.name.includes("(Civ6).png")
+    );
+
+
+
+    /*
+       ONLY HERE:
+       First and only classification
+    */
+
+    await classifyImages();
+
+
+
+    /*
+       Save completed database
+    */
+
+
+    localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify(images)
+    );
+
+
+    localStorage.setItem(
+        CATEGORY_CACHE_KEY,
+        JSON.stringify(categorized)
+    );
+
+
+
+    log(
+        "Cache created"
+    );
+
+
+
+    render();
+
+
+}
+
+
+
+
+
+function render(){
+
+    let list =
+    category.value==="all"
+    ?
+    images
+    :
+    categorized[category.value];
+
+
+    let q =
+    search.value.toLowerCase();
+
+
+    grid.innerHTML="";
+
+
+    list
+    .filter(i =>
+        i.name.toLowerCase()
+        .includes(q)
+    )
+    .forEach(i=>{
+
+        let card =
+        document.createElement("div");
+
+        card.className="card";
+
+
+        card.innerHTML=`
+
+        <img loading="lazy"
+        src="${i.url}">
+
+        <div class="name">
+        ${i.name}
+        </div>
+
+        `;
+
+
+        card.querySelector("img")
+        .onclick = async () => {
+
+            try {
+
+                log("Downloading:", i.name);
+
+
+                const response =
+                await fetch(i.url);
+
+
+                const blob =
+                await response.blob();
+
+
+                const blobUrl =
+                URL.createObjectURL(blob);
+
+
+
+                const a =
+                document.createElement("a");
+
+
+                a.href = blobUrl;
+
+                a.download = i.name;
+
+
+                document.body.appendChild(a);
+
+                a.click();
+
+                a.remove();
+
+
+
+                URL.revokeObjectURL(blobUrl);
+
+
+            }
+            catch(error) {
+
+                log(
+                    "Download failed:",
+                    error
+                );
+
+                // fallback
+                window.open(i.url, "_blank");
+
+            }
+
+        };
+
+
+        grid.appendChild(card);
+
+    });
+
+
+    log(
+        "Displayed:",
+        grid.children.length
+    );
+
+
+    // Force browser repaint
+    requestAnimationFrame(() => {
+        grid.style.display = "none";
+        grid.offsetHeight;
+        grid.style.display = "grid";
+    });
+
+}
+
+
+
+search.oninput =
+render;
+
+
+category.onchange =
+render;
+
+
+
+loadImages()
+.catch(e =>
+log(
+"ERROR:",
+e
+)
+);
+
+
+</script>
+
+</body>
+</html>
