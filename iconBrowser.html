@@ -3,6 +3,7 @@
 
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Civ 6 Icons Browser</title>
 <link rel="shortcut icon" href="https://static.wikia.nocookie.net/civilization/images/9/99/Market_%28Civ6%29.png/revision/latest?cb=20201203200053" type="image/x-icon">
 
@@ -62,7 +63,55 @@ button {
     margin-top:8px;
     word-break:break-word;
 }
+/* Mobile layout */
+@media (max-width: 600px) {
 
+    body {
+        margin: 10px;
+        font-size: 14px;
+    }
+
+
+    h2 {
+        font-size: 20px;
+    }
+
+
+    #status {
+        height: 120px;
+        font-size: 12px;
+    }
+
+
+    #grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+
+
+    .card {
+        padding: 6px;
+    }
+
+
+    .card img {
+        width: 48px;
+        height: 48px;
+    }
+
+
+    .name {
+        font-size: 10px;
+    }
+
+
+    input,
+    select,
+    button {
+        font-size: 16px;
+        padding: 12px;
+    }
+}
 </style>
 
 </head>
