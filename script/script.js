@@ -220,6 +220,9 @@ world.addChild(grid)
 let units = new PIXI.Container()
 world.addChild(units)
 
+let icons = new PIXI.Container()
+world.addChild(icons)
+
 //Moves Border
 let maskLeft = new PIXI.Graphics()
 maskLeft.beginFill("0000ff")
@@ -656,6 +659,8 @@ class GridTile extends PIXI.Sprite{
         if (this.unitSprite){
             this.unitSprite.x=this.x
             this.unitSprite.y=this.y
+            this.unitSprite.flag.x=this.x
+            this.unitSprite.flag.y=this.y-5
         }
 
         if (f){
@@ -1054,8 +1059,15 @@ gridTiles = createGrid(grid,[0,0],[102,100])
 
 
 class Unit extends PIXI.Sprite{
-    constructor(typeIndex){
-        super(unitsTexture[typeIndex])
+    constructor(type){
+        
+        let text=unitsTexture.get(type)
+        if (!text){
+            text=PIXI.Texture.from("data/textures/units/"+type.slice(5)+"_TEXTURE.png")
+            text.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+            unitsTexture.set(type,text)
+        }
+        super(text)
 
         this.width=7
         this.height=7
@@ -1064,13 +1076,31 @@ class Unit extends PIXI.Sprite{
 
         this.eventMode='none'
         
-        this.totalMoveCount=3
+        //Property
+        this.BaseMoves=Number(unitsDB.get(type).getAttribute('BaseMoves'))
         this.moveCount
+
+        this.baseSightRange=Number(unitsDB.get(type).getAttribute('BaseSightRange'))
+
+        //Flag
+        let textIcon=unitsIcons.get(type)
+        if (!textIcon){
+            textIcon=PIXI.Texture.from("data/icons/units/"+type.slice(5)+"_ICON.png")
+            unitsIcons.set(type,textIcon)
+        }
+        this.flag=new PIXI.Sprite(textIcon)
+        this.flag.width=4
+        this.flag.height=4
+        this.flag.anchor.set(0.5,0.5)
+        
+        icons.addChild(this.flag)
+
+        //Ability
     }
     getMovesTiles(){
         let moveT=[]
         let openL=[this.tileCoord]
-        for (let i=0;i<this.totalMoveCount+1;i++){
+        for (let i=0;i<this.BaseMoves+1;i++){
             console.log("Distance:",i)
             let l=[]
             for (let t=0;t<openL.length;t++){
@@ -1094,9 +1124,49 @@ class Unit extends PIXI.Sprite{
     }
 }
 
-let unitType = ["Éclaireur","Bâtisseur","Guerrier"]
-let unitsTexture = [PIXI.Texture.from("data/start.png")]
-let u = new Unit(0)
-units.addChild(u)
+let doc
+let unitsDB = new Map()
+let unitType = ["Éclaireur","Colon","Bâtisseur","Guerrier","Négociant"]
+let unitsTexture = new Map()
+let unitsIcons = new Map()
 
-getTileFromCoord([49,34]).addUnit(u)
+
+fetch("data/xmls/units.xml")
+    .then(res => res.text())
+    .then(text => {
+        const parser = new DOMParser();
+        doc = parser.parseFromString(text, "text/xml")
+        doc.querySelectorAll('Units > Row').forEach(row => {
+            unitsDB.set(row.getAttribute("UnitType"), row);
+        })
+        spawnUnits()
+    })
+
+
+function spawnUnits(){
+
+    let scout = new Unit("UNIT_SCOUT")
+    units.addChild(scout)
+    getTileFromCoord([47,34]).addUnit(scout)
+
+    let settler = new Unit("UNIT_SETTLER")
+    units.addChild(settler)
+    getTileFromCoord([48,40]).addUnit(settler)
+
+    let builder = new Unit("UNIT_BUILDER")
+    units.addChild(builder)
+    getTileFromCoord([40,34]).addUnit(builder)
+
+    let warrior = new Unit("UNIT_WARRIOR")
+    units.addChild(warrior)
+    getTileFromCoord([41,34]).addUnit(warrior)
+
+    let trader = new Unit("UNIT_TRADER")
+    units.addChild(trader)
+    getTileFromCoord([40,30]).addUnit(trader)
+
+    let scout2 = new Unit("UNIT_SCOUT")
+    units.addChild(scout2)
+    getTileFromCoord([42,34]).addUnit(scout2)
+
+}
