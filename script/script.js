@@ -217,12 +217,6 @@ world.addChild(map)
 let grid = new PIXI.Container()
 world.addChild(grid)
 
-let units = new PIXI.Container()
-world.addChild(units)
-
-let icons = new PIXI.Container()
-world.addChild(icons)
-
 //Moves Border
 let maskLeft = new PIXI.Graphics()
 maskLeft.beginFill("0000ff")
@@ -262,6 +256,12 @@ polyBorderSelected.drawPolygon(points)
 polyBorderSelected.alpha=0
 
 world.addChild(polyBorderSelected)
+
+let units = new PIXI.Container()
+world.addChild(units)
+
+let icons = new PIXI.Container()
+world.addChild(icons)
 
 let sizeCanvas=800
 const canvas = document.getElementById("perlinNoise");
@@ -1059,7 +1059,7 @@ gridTiles = createGrid(grid,[0,0],[102,100])
 
 
 class Unit extends PIXI.Sprite{
-    constructor(type){
+    constructor(type,civ){
         
         let text=unitsTexture.get(type)
         if (!text){
@@ -1073,6 +1073,7 @@ class Unit extends PIXI.Sprite{
         this.height=7
         this.anchor.set(0.5,0.5)
         this.tileCoord=[-1,-1]
+        this.civ=civ
 
         this.eventMode='none'
         
@@ -1092,6 +1093,7 @@ class Unit extends PIXI.Sprite{
         this.flag.width=4
         this.flag.height=4
         this.flag.anchor.set(0.5,0.5)
+        this.flag.tint=civilisationsColor[this.civ]
         
         icons.addChild(this.flag)
 
@@ -1129,7 +1131,9 @@ let unitsDB = new Map()
 let unitType = ["Éclaireur","Colon","Bâtisseur","Guerrier","Négociant"]
 let unitsTexture = new Map()
 let unitsIcons = new Map()
-
+let civilisations=["César","Alexandre III"]
+let civilisationsColor={"César":"#ff0000","Alexandre III":"#f8a25b"}
+let civilisationsUnits={"César":[],"Alexandre III":[]}
 
 fetch("data/xmls/units.xml")
     .then(res => res.text())
@@ -1145,28 +1149,35 @@ fetch("data/xmls/units.xml")
 
 function spawnUnits(){
 
-    let scout = new Unit("UNIT_SCOUT")
+    let scout = new Unit("UNIT_SCOUT","César")
     units.addChild(scout)
     getTileFromCoord([47,34]).addUnit(scout)
 
-    let settler = new Unit("UNIT_SETTLER")
+    let settler = new Unit("UNIT_SETTLER","César")
     units.addChild(settler)
     getTileFromCoord([48,40]).addUnit(settler)
 
-    let builder = new Unit("UNIT_BUILDER")
+    let builder = new Unit("UNIT_BUILDER","César")
     units.addChild(builder)
     getTileFromCoord([40,34]).addUnit(builder)
 
-    let warrior = new Unit("UNIT_WARRIOR")
+    let warrior = new Unit("UNIT_WARRIOR","César")
     units.addChild(warrior)
     getTileFromCoord([41,34]).addUnit(warrior)
 
-    let trader = new Unit("UNIT_TRADER")
+    let trader = new Unit("UNIT_TRADER","César")
     units.addChild(trader)
     getTileFromCoord([40,30]).addUnit(trader)
 
-    let scout2 = new Unit("UNIT_SCOUT")
+    let scout2 = new Unit("UNIT_SCOUT","Alexandre III")
     units.addChild(scout2)
     getTileFromCoord([42,34]).addUnit(scout2)
 
+    let builder2 = new Unit("UNIT_BUILDER","Alexandre III")
+    units.addChild(builder2)
+    getTileFromCoord([43,34]).addUnit(builder2)
+
+    let warrior2 = new Unit("UNIT_WARRIOR","Alexandre III")
+    units.addChild(warrior2)
+    getTileFromCoord([44,34]).addUnit(warrior2)
 }

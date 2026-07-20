@@ -219,9 +219,17 @@
             Download Selected ZIP
         </button>
     </div>
-
+    
+    <select id="wiki">
+        <option value="all">
+            Civilisations Wiki
+        </option>
+        <option value="civ6">
+            Civ 6 Wiki
+        </option>
+    </select>
+    
     <select id="category">
-
         <option value="all">
             All
         </option>
@@ -253,8 +261,23 @@
     </div>
 
     <script>
+        const up=new URLSearchParams(location.search)
+        const civ6Wiki=up.get('civ6Wiki')==="true"
+        document.getElementById("wiki").value=civ6Wiki ? "civ6":"all"
+
+        function ChangeWiki(c){
+            window.history.replaceState({ id: "100" },location.pathname,location.pathname+"?civ6Wiki="+c)
+            window.location.reload()
+        }
+
+        document.getElementById("wiki").onchange = ()=>{
+            ChangeWiki(document.getElementById("wiki").value==="civ6")
+        };
+
+        
+
         const API =
-            "https://civilization.fandom.com/api.php?origin=*";
+            civ6Wiki ? "https://civ6.fandom.com/api.php?origin=*" : "https://civilization.fandom.com/api.php?origin=*"
 
         const status =
             document.getElementById("status");
@@ -287,13 +310,10 @@
             document.getElementById("downloadBtn");
 
         const CACHE_KEY =
-            "civ6_images_cache_v3";
+            civ6Wiki ? "civ6_images_cache_v3":"civ_images_cache_v3"
 
         const CATEGORY_CACHE_KEY =
-            "civ6_categories_cache_v3";
-
-        const FILE_CATEGORY_CACHE =
-            "civ6_file_categories_v3";
+            civ6Wiki ? "civ6_categories_cache_v3":"civ_categories_cache_v3"
 
 
         let images = [];
@@ -611,7 +631,7 @@
             }
             while (Object.keys(cont).length > 0);
 
-            images = images.filter(i => i.name.includes("(Civ6).png"));
+            if (!civ6Wiki) images = images.filter(i => i.name.includes("(Civ6).png"));
 
             localStorage.setItem(
                 CACHE_KEY,

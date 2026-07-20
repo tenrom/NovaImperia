@@ -7,7 +7,7 @@ THINGS TO DO
     -Production
     -Science
     -Expansion
--Unités 
+-Unités https://www.reddit.com/r/civ/comments/sq68wd/updated_unit_chart_for_civilization_vi/?tl=fr#lightbox
     -Combat https://civilization.fandom.com/wiki/Combat_(Civ6)
     -Promotion 
     -Fusion unité (Armée / Régiment) https://www.reddit.com/r/civ/comments/13qvn26/a_short_comprehensive_guide_on_corps_fleets/?tl=fr / https://civilization.fandom.com/fr/wiki/Unit%C3%A9_(Civ6)
@@ -41,3 +41,6 @@ All units type:
 -Aircraft Fighter
 -Aircraft Bomber
 -Naval Ranged
+
+
+SOME GAME FILE: https://github.com/chaorace/Civ6-UIFiles/tree/master
