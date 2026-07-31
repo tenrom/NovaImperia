@@ -1181,3 +1181,504 @@ function spawnUnits(){
     units.addChild(warrior2)
     getTileFromCoord([44,34]).addUnit(warrior2)
 }
+
+function distanceManhattan(c1, c2) {
+    return Math.abs(c2[0] - c1[0]) + Math.abs(c2[1] - c1[1]);
+}
+
+function distanceChebyshev(c1, c2) {
+    return Math.max(Math.abs(c2[0] - c1[0]), Math.abs(c2[1] - c1[1]));
+}
+
+function distanceMinkowski(c1, c2, p = 3) {
+    return (Math.abs(c2[0] - c1[0]) ** p + Math.abs(c2[1] - c1[1]) ** p) ** (1 / p);
+}
+
+function distanceMinkowskiChebyshev(c1, c2) {
+    const dx = Math.abs(c2[0] - c1[0]);
+    const dy = Math.abs(c2[1] - c1[1]);
+    return (dx ** 3 + dy ** 3) ** (1 / 3) + Math.max(dx, dy);
+}
+
+function distanceCanberra(c1, c2) {
+    const numX = Math.abs(c2[0] - c1[0]);
+    const denX = Math.abs(c1[0]) + Math.abs(c2[0]) || 1;
+    const numY = Math.abs(c2[1] - c1[1]);
+    const denY = Math.abs(c1[1]) + Math.abs(c2[1]) || 1;
+    return (numX / denX) + (numY / denY);
+}
+
+function distanceAnisotropic(c1, c2) {
+    return Math.sqrt(((c2[0] - c1[0]) * 3.0) ** 2 + (c2[1] - c1[1]) ** 2);
+}
+
+function distanceSquaredEucl(c1, c2) {
+    return (c2[0] - c1[0]) ** 2 + (c2[1] - c1[1]) ** 2;
+}
+
+function distanceHybrid(c1, c2) {
+    const dx = Math.abs(c2[0] - c1[0]);
+    const dy = Math.abs(c2[1] - c1[1]);
+    return (dx + dy + Math.max(dx, dy)) * 0.5;
+}
+
+
+function createCellularNoise(rng,size,n,radius,Worley=false,WorleyOptimisation=false,LloydAlg=false,LloydIteration=3,distF=distanceEucl,Voronoi=false){
+    let points=[]
+    let WorleyC=new Map()
+    let gw
+    let gh
+    let w
+    let voronoiC=new Map()
+    let voronoiColors=[]
+    if (Voronoi){
+        for (let c=1;c<n+1;c++){
+            voronoiColors.push(c/n)
+        }
+    }
+    if (Worley){
+        let nextSquare=Math.ceil(Math.sqrt(n))**2
+        w=Math.ceil(Math.sqrt(n))
+        gw=size[0]/w
+        gh=size[1]/w
+        let l=[]
+        for (let x=0;x<w;x++){
+            for (let y=0;y<w;y++){
+                l.push([[x*gw+gw/2+(rng()*gw-gw/2),y*gh+gh/2+(rng()*gh-gh/2)],[x,y]])
+            }
+        }
+        for (let i=0;i<n;i++){
+            point= l.splice(Math.floor(rng()*l.length),1)[0]
+            points.push(point[0])
+            WorleyC.set(JSON.stringify(point[1]),point[0])
+            if (Voronoi){
+                voronoiC.set(point[0],voronoiColors.splice(Math.floor(Voronoi()*voronoiColors.length),1))
+            }
+        }
+    }else{
+        radius=Math.floor(Math.min(radius,1.0746*Math.sqrt(size[0]*size[1]/n)))
+        for (let i=0;i<n;i++){
+            let point
+            let minDist
+            do{
+                point=[Math.round(rng()*size[0]),Math.round(rng()*size[1])]
+                if (points[0]){
+                    minDist=distanceEucl(points[0],point)
+                    for (let p of points){
+                        let dist=distanceEucl(p,point)
+                        if (dist<minDist){
+                            minDist=dist
+                        }
+                    }
+                }
+            }while(minDist<radius)
+            
+            points.push(point)
+            if (Voronoi){
+                voronoiC.set(point,voronoiColors.splice(Math.floor(Voronoi()*voronoiColors.length),1))
+            }
+        }
+    }
+    console.log(points)
+    console.log(gw)
+    console.log(WorleyC)
+    console.log(voronoiC)
+    let tab
+    let maxDist
+    let nb=0
+    let cells
+    do{
+        if (nb>0){
+            Worley=false
+            if (Voronoi){
+                voronoiC=new Map()
+                voronoiColors=[]
+                for (let c=1;c<n+1;c++){
+                    voronoiColors.push(c/n)
+                }
+            }
+            console.log(cells)
+            newPoints=[]
+            for (p of points){
+                let centroid=[cells.get(p)[0]/cells.get(p)[2],cells.get(p)[1]/cells.get(p)[2]]
+                newPoints.push(centroid)
+                if (Voronoi){
+                    voronoiC.set(centroid,voronoiColors.splice(Math.floor(Voronoi()*voronoiColors.length),1))
+                }
+            }
+            points=newPoints
+            console.log(points)
+        }
+        nb+=1
+        tab=[]
+        maxDist=0
+        cells=new Map()
+        for (let x=0;x<size[0];x++){
+            let col=[]
+            for (let y=0;y<size[1];y++){
+                let ps
+                if (WorleyOptimisation){
+                    let tile=[Math.floor(x/gw),Math.floor(y/gh)]
+                    if (WorleyC.get(JSON.stringify(tile))){
+                        ps=[]
+                        let adj=[[0,0],[0,1],[0,-1],[1,0],[-1,0],[-1,-1],[1,1],[-1,1],[1,-1]]
+                        for (let a of adj){
+                            let px=tile[0]+a[0]
+                            let py=tile[1]+a[1]
+                            if (px>=0 && px<w && py>=0 && py<w){
+                                let k=WorleyC.get(JSON.stringify([px,py]))
+                                if (k) ps.push(k)
+                            } 
+                        }
+                    }else{
+                        ps=points
+                    }
+                    
+                }else{
+                    ps=points
+                }
+                
+                let F1=10000
+                let F2=10000
+                let F3=10000
+                let P1
+                let P2
+                let P3
+                for (let p of ps){
+                    let dist=distF(p,[x,y])
+                    if (dist<F1){
+                        F1=dist
+                        P1=p
+                    }else if (dist<F2){
+                        F2=dist
+                        P2=p
+                    }else if (dist<F3){
+                        F3=dist
+                        P3=p
+                    }
+                }
+                let distance=F1
+                let choosePoint=P1
+                
+                if (cells.get(choosePoint)){
+                    cells.get(choosePoint)[0]+=x
+                    cells.get(choosePoint)[1]+=y
+                    cells.get(choosePoint)[2]++
+                }else{
+                    cells.set(choosePoint,[x,y,1])
+                }
+                
+                if (Voronoi){
+                    col.push(voronoiC.get(choosePoint))
+                }else{
+                    if (distance>maxDist) maxDist=distance
+                    col.push(distance)
+                }
+            }
+            tab.push(col)
+        }
+    }while(nb<LloydIteration+1 && LloydAlg)
+    return (x,y)=>{
+        if (Voronoi) return tab[x][y]
+        return tab[x][y]/maxDist
+    }
+}
+
+function lerpRGB(color1, color2, t) {
+    return [Math.round(color1[0] + (color2[0] - color1[0]) * t), Math.round(color1[1] + (color2[1] - color1[1]) * t), Math.round(color1[2] + (color2[2] - color1[2]) * t)]
+}
+
+class Warper{
+    constructor(config){
+        let seed="Thomas"
+        this.rng=new Math.seedrandom(seed)
+        this.rng1=new Math.seedrandom(seed+"1")
+        this.rng2=new Math.seedrandom(seed+"2")
+        this.n=createNoise2D(this.rng)
+        this.n1=createNoise2D(this.rng1)
+        this.n2=createNoise2D(this.rng2)
+
+        //// Parameters
+        const defaults={
+            // Main
+            scale:0.005,
+            warpOctaves:3,
+            warpLacunarity:2,
+            warpPersistence:0.5,
+            warpStrength:20,
+            masked:true,
+            centralized:true,
+            innerCircleDistance:200,
+            outerCircleDistance:240,
+            debugCircle:false,
+            cutOut:false,
+        }
+
+        const cfg = {...defaults,...config}
+        console.log(cfg)
+        this.scale=cfg.scale
+        this.warpOctaves=cfg.warpOctaves
+        this.warpLacunarity=cfg.warpLacunarity
+        this.warpPersistence=cfg.warpPersistence
+        this.warpStrength=cfg.warpStrength
+        this.masked=cfg.masked
+        this.centralized=cfg.centralized
+        this.innerCircleDistance=cfg.innerCircleDistance.clamp(0,265)
+        this.outerCircleDistance=cfg.outerCircleDistance.clamp(this.innerCircleDistance,265)
+        this.debugCircle=cfg.debugCircle
+        this.cutOut=cfg.cutOut
+
+        this.cfg=cfg
+    }
+    warpImage(refImageData,maskImageData){
+        let imageData = ctxTest.createImageData(refImageData.width,refImageData.height)
+
+        for (let x=0;x<refImageData.width;x++){
+            for (let y=0;y<refImageData.height;y++){
+                let coordX=x*this.scale
+                let coordY=y*this.scale
+
+                let dx=0
+                let dy=0
+                let r=0
+                let warpAmplitude=1
+                let warpFrequency=1
+                for (let i=0;i<this.warpOctaves+1;i++){
+                    dx+=this.n1(coordX*warpFrequency,coordY*warpFrequency)*warpAmplitude
+                    dy+=this.n2(coordX*warpFrequency,coordY*warpFrequency)*warpAmplitude
+                    r+=this.n(coordX*warpFrequency,coordY*warpFrequency)*warpAmplitude
+
+                    warpFrequency *= this.warpLacunarity
+                    warpAmplitude *= this.warpPersistence
+                }
+
+                let w=this.warpStrength
+                dx*=w
+                dy*=w
+
+                let alphaDistance=1
+                if(this.centralized) alphaDistance=1-((distanceEucl([264.5,264.5],[x,y])-this.innerCircleDistance)/(this.outerCircleDistance-this.innerCircleDistance)).clamp(0,1)
+                
+                let color=getPixel(refImageData,Math.round(x+dx*alphaDistance).clamp(0,refImageData.width-1),Math.round(y+dy*alphaDistance).clamp(0,refImageData.height-1))
+                
+                // Debug Circle
+                if (this.debugCircle) color=[alphaDistance*255,alphaDistance*255,alphaDistance*255]
+
+                //Mask
+                let alpha=getPixel(maskImageData,x,y)
+                if (!this.masked) alpha=[255,255,255]
+                color=[color[0]*alpha[0]/255,color[1]*alpha[1]/255,color[2]*alpha[2]/255]
+                
+                let opacity=255
+                if (this.cutOut && color[0]+color[1]+color[2]===0) opacity=0
+                
+                //color=[r*255,r*255,r*255]
+                //color=[(dx/this.warpStrength*0.5+0.5)*255,(dx/this.warpStrength*0.5+0.5)*255,(dx/this.warpStrength*0.5+0.5)*255]
+                setPixel(imageData,x,y,color,opacity)
+            }
+        }
+
+        return imageData
+    }
+    softenImage(refImageData,maskImageData){
+        let imageData = ctxTest.createImageData(refImageData.width,refImageData.height)
+        for (let x=0;x<refImageData.width;x++){
+            for (let y=0;y<refImageData.height;y++){
+                let l=[0,0,0]
+                for (let i of [[0,0],[0,1],[0,-1],[1,0],[-1,0],[-1,-1],[1,1],[-1,1],[1,-1]]){
+                    if (x+i[0]>0 && x+i[0]<refImageData.width && y+i[1]>0 && y+i[1]<refImageData.height){
+                        let color=getPixel(refImageData,x+i[0],y+i[1])
+                        
+                        l[0]+=color[0]**2
+                        l[1]+=color[1]**2
+                        l[2]+=color[2]**2
+                    }
+                }
+                let color=[Math.sqrt(l[0]/9),Math.sqrt(l[1]/9),Math.sqrt(l[2]/9)]
+
+                //Mask
+                let alpha=getPixel(maskImageData,x,y)
+                if (!this.masked) alpha=[255,255,255]
+                color=[color[0]*alpha[0]/255,color[1]*alpha[1]/255,color[2]*alpha[2]/255]
+
+                let opacity=255
+                if (this.cutOut && color[0]+color[1]+color[2]===0) opacity=0
+
+                setPixel(imageData,x,y,color,opacity)
+            }
+        }
+        return imageData
+    }
+    getChannel(refImageData,c){
+        let imageData = ctxTest.createImageData(refImageData.width,refImageData.height)
+        let index
+        if (c==='R'){
+            index=0 
+        }else if (c==='G'){
+            index=1
+        }else if (c==='B'){
+            index=2
+        }else{
+            return refImageData
+        }
+
+        for (let x=0;x<refImageData.width;x++){
+            for (let y=0;y<refImageData.height;y++){
+                let color=getPixel(refImageData,x,y)[index]
+                setPixel(imageData,x,y,[color,color,color])
+            }
+        }
+
+        return imageData
+    }
+    putTextureAtChannel(refImageData,maskImageData,texture,c){
+        let imageData = ctxTest.createImageData(refImageData.width,refImageData.height)
+        let index
+        if (c==='R'){
+            index=0 
+        }else if (c==='G'){
+            index=1
+        }else if (c==='B'){
+            index=2
+        }else{
+            return refImageData
+        }
+
+        for (let x=0;x<maskImageData.width;x++){
+            for (let y=0;y<maskImageData.height;y++){
+                let alpha=getPixel(maskImageData,x,y)[index]
+                setPixel(imageData,x,y,lerpRGB(getPixel(refImageData,x,y),getPixel(texture,x,y),alpha/255))
+            }
+        }
+
+        return imageData
+    }
+}
+
+
+// Canvas Warp
+let size=[document.getElementById("blendImg").width,document.getElementById("blendImg").height]
+let canvasWarp=document.getElementById("canvasWarp");
+canvasWarp.width=size[0]
+canvasWarp.height=size[1]
+const ctxTest = canvasWarp.getContext("2d");
+ctxTest.drawImage(document.getElementById("blendMask"),0,0)
+let maskImageData=ctxTest.getImageData(0,0,size[0],size[1])
+ctxTest.drawImage(document.getElementById("grasslandTexture"),0,0)
+let grasslandTexture=ctxTest.getImageData(0,0,size[0],size[1])
+ctxTest.drawImage(document.getElementById("sandTexture"),0,0)
+let sandTexture=ctxTest.getImageData(0,0,size[0],size[1])
+ctxTest.drawImage(document.getElementById("oceanTexture"),0,0)
+let oceanTexture=ctxTest.getImageData(0,0,size[0],size[1])
+ctxTest.drawImage(document.getElementById("blendImg"),0,0)
+let refImageData=ctxTest.getImageData(0,0,size[0],size[1])
+
+
+grasslandTexture = ctxTest.createImageData(529,529)
+sandTexture = ctxTest.createImageData(529,529)
+
+let seed="Grassland"
+let cfgGrass={
+    scale:0.005,
+    octaves:3,
+    ridged:false,
+    inversed:false,
+    warp:false,
+    colorised:false,
+    centralized:false,
+    circleDistance:300,
+}
+let noiseGrassland = new PerlinNoise(seed,cfgGrass)
+const resultGrassland=noiseGrassland.createPerlinNoise(0,800,0,800)
+
+seed="Sand"
+cfg={
+    scale:0.005,
+    octaves:3,
+    ridged:true,
+    inversed:true,
+    warp:true,
+    colorised:false,
+    centralized:false,
+    circleDistance:300,
+}
+let noiseSand = new PerlinNoise(seed,cfg)
+const resultSand=noiseSand.createPerlinNoise(0,800,0,800)
+
+for (let x=0;x<grasslandTexture.width;x++){
+    for (let y=0;y<grasslandTexture.height;y++){
+        let v=Math.floor(resultGrassland[0][x][y]*10)/10*255
+        setPixel(grasslandTexture,x,y,[v,v,v])
+        setPixel(sandTexture,x,y,lerpRGB([243, 193, 124],[222, 165, 96],resultSand[0][x][y]))
+    }
+}
+
+
+ctxTest.putImageData(grasslandTexture,0,0)
+
+let rgbMask
+let config={
+    scale:0.5,
+    warpOctaves:3,
+    warpLacunarity:2,
+    warpPersistence:0.5,
+    warpStrength:20,
+    masked:false,
+    centralized:false,
+    innerCircleDistance:200,
+    outerCircleDistance:240,
+    debugCircle:false,
+}
+warp1=new Warper({masked:false,warpStrength:20})
+warp2=new Warper(config)
+warp3=new Warper({masked:true,cutOut:true})
+rgbMask=warp1.warpImage(refImageData,maskImageData)
+rgbMask=warp2.warpImage(rgbMask,maskImageData)
+
+let tile=ctxTest.createImageData(refImageData.width,refImageData.height)
+tile=warp3.putTextureAtChannel(tile,rgbMask,sandTexture,'R')
+tile=warp3.putTextureAtChannel(tile,rgbMask,sandTexture,'G')
+tile=warp3.putTextureAtChannel(tile,rgbMask,grasslandTexture,'B')
+//tile=warp3.softenImage(tile,maskImageData)
+
+
+let rng = new Math.seedrandom("test")
+let rngColor = new Math.seedrandom("color")
+let ite=0
+
+let f=()=>{
+    ite++
+    if (ite>5) clearInterval(idInterval)
+    //distanceEucl,distanceManhattan,distanceChebyshev,distanceMinkowski,distanceMinkowskiChebyshev,distanceCanberra,distanceAnisotropic,distanceSquaredEucl,distanceHybrid
+
+    let cn = createCellularNoise(rng,[529,529],200,30,true,false,false,3,distanceEucl)
+
+    let voronoiColors=new Map()
+    for (let c=1;c<500+1;c++){
+        let r=Math.round(rngColor()*255)
+        let g=Math.round(rngColor()*255)
+        let b=Math.round(rngColor()*255)
+        voronoiColors.set(c/500,[r,g,b])
+    }
+    console.log(voronoiColors)
+
+    let celullarNoise = ctxTest.createImageData(529,529)
+
+    for (let x=0;x<celullarNoise.width;x++){
+        for (let y=0;y<celullarNoise.height;y++){
+            let v=cn(x,y)*255
+            let color=[v,v,v]
+            // if (v<5){
+            //     color=[255,0,0]
+            // }
+            setPixel(celullarNoise,x,y,color)
+        }
+    }
+
+    ctxTest.putImageData(celullarNoise,0,0)
+}
+
+//let idInterval=setInterval(f,1000)
+
+
+

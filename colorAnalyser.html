@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Image Color Analyzer</title>
+
+<style>
+*{
+    box-sizing:border-box;
+    font-family:Arial,Helvetica,sans-serif;
+}
+
+body{
+    margin:0;
+    background:#f2f4f8;
+}
+
+header{
+    padding:15px;
+    background:#2b3a55;
+    color:white;
+}
+
+.container{
+    display:flex;
+    height:calc(100vh - 70px);
+}
+
+.left{
+    width:40%;
+    border-right:1px solid #ccc;
+    display:flex;
+    flex-direction:column;
+    padding:15px;
+    gap:10px;
+    overflow:auto;
+}
+
+.right{
+    width:60%;
+    padding:15px;
+    overflow:auto;
+}
+
+#dropZone{
+    border:2px dashed #999;
+    border-radius:10px;
+    height:120px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:#555;
+    background:white;
+    cursor:pointer;
+}
+
+canvas{
+    width:100%;
+    border:1px solid #ccc;
+    background:white;
+}
+
+.controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin:10px 0;
+}
+
+button{
+    padding:8px 15px;
+    cursor:pointer;
+}
+
+input[type=range]{
+    width:180px;
+}
+
+.stats{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:10px;
+    margin-bottom:15px;
+}
+
+.card{
+    background:white;
+    padding:10px;
+    border-radius:8px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    background:white;
+}
+
+th{
+    position:sticky;
+    top:0;
+    background:#ddd;
+}
+
+td,th{
+    padding:6px;
+    border-bottom:1px solid #eee;
+}
+
+.swatch{
+    width:28px;
+    height:28px;
+    border:1px solid black;
+}
+
+tr:hover{
+    background:#f5f5f5;
+}
+
+.search{
+    padding:8px;
+    width:250px;
+}
+
+.footer{
+    margin-top:15px;
+    color:#666;
+}
+</style>
+
+</head>
+<body>
+
+<header>
+<h2>🎨 Image Color Analyzer</h2>
+</header>
+
+<div class="container">
+
+<div class="left">
+
+<div id="dropZone">
+Drop image here or click
+<input type="file" id="file" accept="image/*" hidden>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div class="controls">
+
+<label>
+Quantization:
+<input type="range" min="1" max="64" value="1" id="quant">
+</label>
+
+<span id="quantLabel">1</span>
+
+<button id="analyze">Analyze</button>
+
+<button id="export">Export CSV</button>
+
+</div>
+
+</div>
+
+<div class="right">
+
+<div class="stats">
+
+<div class="card">
+<b>Total Pixels</b>
+<div id="pixels">-</div>
+</div>
+
+<div class="card">
+<b>Unique Colors</b>
+<div id="unique">-</div>
+</div>
+
+<div class="card">
+<b>Most Common</b>
+<div id="common">-</div>
+</div>
+
+<div class="card">
+<b>Coverage</b>
+<div id="coverage">100%</div>
+</div>
+
+</div>
+
+<input class="search" id="search" placeholder="Search HEX...">
+
+<table id="table">
+<thead>
+<tr>
+<th>Color</th>
+<th>HEX</th>
+<th>Pixels</th>
+<th>%</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div class="footer">
+Click any HEX value to copy it.
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+
+const drop=document.getElementById("dropZone");
+const file=document.getElementById("file");
+
+let results=[];
+
+drop.onclick=()=>file.click();
+
+drop.ondragover=e=>{
+e.preventDefault();
+drop.style.background="#eef";
+};
+
+drop.ondragleave=e=>{
+drop.style.background="white";
+};
+
+drop.ondrop=e=>{
+e.preventDefault();
+drop.style.background="white";
+loadFile(e.dataTransfer.files[0]);
+};
+
+file.onchange=e=>{
+loadFile(e.target.files[0]);
+};
+
+function loadFile(f){
+
+const img=new Image();
+
+img.onload=()=>{
+
+canvas.width=img.width;
+canvas.height=img.height;
+
+ctx.drawImage(img,0,0);
+
+};
+
+img.src=URL.createObjectURL(f);
+
+}
+
+document.getElementById("quant").oninput=function(){
+document.getElementById("quantLabel").innerText=this.value;
+};
+
+document.getElementById("analyze").onclick=analyze;
+
+function analyze(){
+
+const q=parseInt(document.getElementById("quant").value);
+
+const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+
+const d=img.data;
+
+const map=new Map();
+
+for(let i=0;i<d.length;i+=4){
+
+let r=d[i];
+let g=d[i+1];
+let b=d[i+2];
+
+if(q>1){
+r=Math.floor(r/q)*q;
+g=Math.floor(g/q)*q;
+b=Math.floor(b/q)*q;
+}
+
+const hex=rgbToHex(r,g,b);
+
+map.set(hex,(map.get(hex)||0)+1);
+
+}
+
+results=[...map.entries()]
+.map(([hex,count])=>({hex,count}))
+.sort((a,b)=>b.count-a.count);
+
+display();
+
+}
+
+function display(){
+
+const tbody=document.querySelector("tbody");
+tbody.innerHTML="";
+
+const total=canvas.width*canvas.height;
+
+document.getElementById("pixels").innerText=total.toLocaleString();
+
+document.getElementById("unique").innerText=results.length;
+
+if(results.length){
+
+document.getElementById("common").innerHTML=
+`<span style="display:inline-block;width:18px;height:18px;background:${results[0].hex};border:1px solid black;"></span>
+ ${results[0].hex}`;
+
+}
+
+const filter=document.getElementById("search").value.toLowerCase();
+
+results.forEach(c=>{
+
+if(!c.hex.toLowerCase().includes(filter)) return;
+
+const tr=document.createElement("tr");
+
+const percent=(100*c.count/total);
+
+tr.innerHTML=`
+<td><div class="swatch" style="background:${c.hex}"></div></td>
+<td class="hex">${c.hex}</td>
+<td>${c.count.toLocaleString()}</td>
+<td>${percent.toFixed(3)}%</td>
+`;
+
+tbody.appendChild(tr);
+
+});
+
+document.querySelectorAll(".hex").forEach(el=>{
+el.style.cursor="pointer";
+el.onclick=()=>{
+navigator.clipboard.writeText(el.innerText);
+alert("Copied "+el.innerText);
+};
+});
+
+}
+
+document.getElementById("search").oninput=display;
+
+function rgbToHex(r,g,b){
+
+return "#"+
+[r,g,b]
+.map(x=>x.toString(16).padStart(2,"0"))
+.join("")
+.toUpperCase();
+
+}
+
+document.getElementById("export").onclick=function(){
+
+if(results.length==0) return;
+
+const total=canvas.width*canvas.height;
+
+let csv="HEX,Pixels,Percentage\n";
+
+results.forEach(c=>{
+
+csv+=`${c.hex},${c.count},${(100*c.count/total).toFixed(4)}\n`;
+
+});
+
+const blob=new Blob([csv],{type:"text/csv"});
+
+const a=document.createElement("a");
+
+a.href=URL.createObjectURL(blob);
+
+a.download="colors.csv";
+
+a.click();
+
+};
+
+</script>
+
+</body>
+</html>
