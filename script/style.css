@@ -39,4 +39,20 @@ body{
     width: 529px;
     height:529px;
     border: 1px solid red;
+    image-rendering: pixelated;
+}
+
+.div3d{
+    width:100%;
+    height:100%;
+    position: fixed;
+    top:0;
+    left:0;
+}
+
+.div3d-canvas{
+    transform: translateX(531px);
+    width: 600px;
+    height:600px;
+    border: 1px solid red;
 }

@@ -263,7 +263,7 @@ world.addChild(units)
 let icons = new PIXI.Container()
 world.addChild(icons)
 
-let sizeCanvas=800
+let sizeCanvas=1000
 const canvas = document.getElementById("perlinNoise");
 canvas.width=sizeCanvas
 canvas.height=sizeCanvas
@@ -277,8 +277,9 @@ function setPixel(imageData, x, y, color, a = 255) {
     imageData.data[index + 3] = a; // A
 }
 
-function getPixel(imageData, x, y) {
+function getPixel(imageData, x, y, returnAlpha=false) {
     const index = (y * imageData.width + x) * 4;
+    if (returnAlpha) return [imageData.data[index],imageData.data[index + 1],imageData.data[index + 2],imageData.data[index + 3]]
     return [imageData.data[index],imageData.data[index + 1],imageData.data[index + 2]]
 }
 
@@ -360,13 +361,14 @@ class PerlinNoise{
         this.cfg=cfg
     }
     createPerlinNoise(x1,x2,y1,y2){
-        this.imageData = ctx.createImageData(sizeCanvas,sizeCanvas)
+        this.imageData = ctx.createImageData(x2,y2)
+        let sizeImage=x2
 
         let mapPixels=[]
         this.size=[x2-x1,y2-y1]
-        for (let x=Math.max(0,x1);x<Math.min(x2,sizeCanvas);x++){
+        for (let x=Math.max(0,x1);x<sizeImage;x++){
             let col=new Float32Array(this.size[1])
-            for (let y=Math.max(0,y1);y<Math.min(y2,sizeCanvas);y++){
+            for (let y=Math.max(0,y1);y<sizeImage;y++){
                 let coordX=x*this.scale
                 let coordY=y*this.scale
 
@@ -402,20 +404,20 @@ class PerlinNoise{
                 }
                 let alphaDistance=1
                 if (this.centralized){
-                    alphaDistance=1-(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.circleDistance/(this.scale*100))).clamp(0,1)
+                    alphaDistance=1-(distanceEucl([sizeImage/2,sizeImage/2],[x,y])/(this.circleDistance/(this.scale*100))).clamp(0,1)
                 }
 
                 if (this.decentralized && this.centralized){
                     if (this.extendCenter){
-                        alphaDistance=Math.min((Math.abs(sizeCanvas/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
+                        alphaDistance=Math.min((Math.abs(sizeImage/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
                     }else{
-                        alphaDistance=Math.min((distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
+                        alphaDistance=Math.min((distanceEucl([sizeImage/2,sizeImage/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1),alphaDistance)
                     }
                 }else if (this.decentralized){
                     if (this.extendCenter){
-                        alphaDistance=(Math.abs(sizeCanvas/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1)
+                        alphaDistance=(Math.abs(sizeImage/2-y)/(this.distance/(this.scale*100))-1).clamp(0,1)
                     }else{
-                        alphaDistance=(distanceEucl([sizeCanvas/2,sizeCanvas/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1)
+                        alphaDistance=(distanceEucl([sizeImage/2,sizeImage/2],[x,y])/(this.distance/(this.scale*100))-1).clamp(0,1)
                     }
                 }
                 
@@ -1182,6 +1184,27 @@ function spawnUnits(){
     getTileFromCoord([44,34]).addUnit(warrior2)
 }
 
+let mountainText=PIXI.Texture.from("data/mountain.png")
+let mountain=new PIXI.Sprite(mountainText)
+units.addChild(mountain)
+
+let tileMo=getTileFromCoord([51,50])
+
+mountain.x=tileMo.x-5
+mountain.y=tileMo.y-4
+mountain.width=10
+mountain.height=8
+
+let mountain2=new PIXI.Sprite(mountainText)
+units.addChild(mountain2)
+
+let tileMo2=getTileFromCoord([51,51])
+
+mountain2.x=tileMo2.x-5
+mountain2.y=tileMo2.y-4
+mountain2.width=10
+mountain2.height=8
+
 function distanceManhattan(c1, c2) {
     return Math.abs(c2[0] - c1[0]) + Math.abs(c2[1] - c1[1]);
 }
@@ -1412,6 +1435,8 @@ class Warper{
             outerCircleDistance:240,
             debugCircle:false,
             cutOut:false,
+            clampPixel:true,
+            colorReplace:[255,255,255,0]
         }
 
         const cfg = {...defaults,...config}
@@ -1427,6 +1452,8 @@ class Warper{
         this.outerCircleDistance=cfg.outerCircleDistance.clamp(this.innerCircleDistance,265)
         this.debugCircle=cfg.debugCircle
         this.cutOut=cfg.cutOut
+        this.clampPixel=cfg.clampPixel
+        this.colorReplace=cfg.colorReplace
 
         this.cfg=cfg
     }
@@ -1459,17 +1486,27 @@ class Warper{
                 let alphaDistance=1
                 if(this.centralized) alphaDistance=1-((distanceEucl([264.5,264.5],[x,y])-this.innerCircleDistance)/(this.outerCircleDistance-this.innerCircleDistance)).clamp(0,1)
                 
-                let color=getPixel(refImageData,Math.round(x+dx*alphaDistance).clamp(0,refImageData.width-1),Math.round(y+dy*alphaDistance).clamp(0,refImageData.height-1))
-                
+                let opacity=getPixel(refImageData,x,y,true)[3]
+                let color
+                if (this.clampPixel) color=getPixel(refImageData,Math.round(x+dx*alphaDistance).clamp(0,refImageData.width-1),Math.round(y+dy*alphaDistance).clamp(0,refImageData.height-1))
+                else {
+                    let newX=Math.round(x+dx*alphaDistance)
+                    let newY=Math.round(y+dy*alphaDistance)
+                    if (newX<0 || newX>refImageData.width-1 || newY<0 || newY>refImageData.height-1) {
+                        color=this.colorReplace
+                        opacity=this.colorReplace[3]
+                    }
+                    else color=getPixel(refImageData,newX,newY)
+                }
+
                 // Debug Circle
                 if (this.debugCircle) color=[alphaDistance*255,alphaDistance*255,alphaDistance*255]
 
                 //Mask
-                let alpha=getPixel(maskImageData,x,y)
-                if (!this.masked) alpha=[255,255,255]
-                color=[color[0]*alpha[0]/255,color[1]*alpha[1]/255,color[2]*alpha[2]/255]
+                let alpha=255
+                if (this.masked) alpha=getPixel(maskImageData,x,y)[0]
+                color=[color[0]*alpha/255,color[1]*alpha/255,color[2]*alpha/255]
                 
-                let opacity=255
                 if (this.cutOut && color[0]+color[1]+color[2]===0) opacity=0
                 
                 //color=[r*255,r*255,r*255]
@@ -1497,14 +1534,48 @@ class Warper{
                 let color=[Math.sqrt(l[0]/9),Math.sqrt(l[1]/9),Math.sqrt(l[2]/9)]
 
                 //Mask
-                let alpha=getPixel(maskImageData,x,y)
-                if (!this.masked) alpha=[255,255,255]
-                color=[color[0]*alpha[0]/255,color[1]*alpha[1]/255,color[2]*alpha[2]/255]
+                let alpha=255
+                if (this.masked) alpha=getPixel(maskImageData,x,y)[0]
+                color=[color[0]*alpha/255,color[1]*alpha/255,color[2]*alpha/255]
 
-                let opacity=255
+                let opacity=getPixel(refImageData,x,y,true)[3]
                 if (this.cutOut && color[0]+color[1]+color[2]===0) opacity=0
 
                 setPixel(imageData,x,y,color,opacity)
+            }
+        }
+        return imageData
+    }
+    ScaleUp(refImageData){
+        let imageData = ctxTest.createImageData(refImageData.width*2,refImageData.height*2)
+        let corresp=[[[-1,-1],[0,-1],[-1,0],[0,0]],[[0,-1],[1,-1],[0,0],[1,0]],[[-1,0],[0,0],[-1,1],[0,1]],[[0,0],[1,0],[0,1],[1,1]]]
+        let coeffs=[[15,25,25,35],[25,15,35,25],[25,35,15,25],[35,25,25,15]]
+
+        for (let x=0;x<refImageData.width*2;x++){
+            for (let y=0;y<refImageData.height*2;y++){
+                let s=0
+                let n=0
+                let point=[Math.floor(x/2),Math.floor(y/2)]
+                let indexType
+                let xIsPeer=x%2===0
+                let yIsPeer=y%2===0
+                if (xIsPeer && yIsPeer) indexType=0
+                else if (!xIsPeer && yIsPeer) indexType=1
+                else if (xIsPeer && !yIsPeer) indexType=2
+                else indexType=3
+                
+                let co=corresp[indexType]
+                let coeff=coeffs[indexType]
+                for (let c in co){
+                    let cx=point[0]+co[c][0]
+                    let cy=point[1]+co[c][1]
+                    if (cx>=0 && cy>=0 && cx<refImageData.width && cy<refImageData.height){
+                        s+=getPixel(refImageData,cx,cy)[0]*coeff[c]
+                        n+=coeff[c]
+                    }
+                }
+                    
+                setPixel(imageData,x,y,[s/n,s/n,s/n])
             }
         }
         return imageData
@@ -1544,8 +1615,8 @@ class Warper{
             return refImageData
         }
 
-        for (let x=0;x<maskImageData.width;x++){
-            for (let y=0;y<maskImageData.height;y++){
+        for (let x=0;x<refImageData.width;x++){
+            for (let y=0;y<refImageData.height;y++){
                 let alpha=getPixel(maskImageData,x,y)[index]
                 setPixel(imageData,x,y,lerpRGB(getPixel(refImageData,x,y),getPixel(texture,x,y),alpha/255))
             }
@@ -1555,13 +1626,335 @@ class Warper{
     }
 }
 
+function ScaleUp(tab){
+    let newTab=[]
+    let corresp=[[[-1,-1],[0,-1],[-1,0],[0,0]],[[0,-1],[1,-1],[0,0],[1,0]],[[-1,0],[0,0],[-1,1],[0,1]],[[0,0],[1,0],[0,1],[1,1]]]
+    let coeffs=[[15,25,25,35],[25,15,35,25],[25,35,15,25],[35,25,25,15]]
+
+    for (let x=0;x<tab.length*2;x++){
+        let col=[]
+        for (let y=0;y<tab.length*2;y++){
+            let s=0
+            let n=0
+            let point=[Math.floor(x/2),Math.floor(y/2)]
+            let indexType
+            let xIsPeer=x%2===0
+            let yIsPeer=y%2===0
+            if (xIsPeer && yIsPeer) indexType=0
+            else if (!xIsPeer && yIsPeer) indexType=1
+            else if (xIsPeer && !yIsPeer) indexType=2
+            else indexType=3
+            
+            let co=corresp[indexType]
+            let coeff=coeffs[indexType]
+            for (let c in co){
+                let cx=point[0]+co[c][0]
+                let cy=point[1]+co[c][1]
+                if (cx>=0 && cy>=0 && cx<tab.length && cy<tab.length){
+                    s+=tab[cx][cy]*coeff[c]
+                    n+=coeff[c]
+                }
+            }
+                
+            col.push(s/n)
+        }
+        newTab.push(col)
+    }
+    return newTab
+}
+
+function SmoothBlur(tab){
+    let newTab=[]
+    for (let x=0;x<tab.length;x++){
+        let col=[]
+        for (let y=0;y<tab[x].length;y++){
+            let co=[[0,0],[1,0],[0,1],[-1,0],[0,-1]]
+            let s=0
+            let n=0
+            for (let c of co){
+                if (x+c[0]>=0 && y+c[1]>=0 && x+c[0]<tab.length && y+c[1]<tab[x].length){
+                    n++
+                    s+=tab[x+c[0]][y+c[1]]
+                }
+            }
+            col.push(s/n)
+        }
+        newTab.push(col)
+    }
+    return newTab
+}
+
+function ScaleUpBlur(tab){
+    return SmoothBlur(ScaleUp(tab))
+}
+
+function ScaleUpCrisp(centerPoint,structure,rng){
+    let newCenterPoint=[centerPoint[0]*2,centerPoint[1]*2]
+    let newStructure=new Map()
+    let newPointsStuck=[newCenterPoint]
+
+    for (let [coord1,list] of structure){
+        const [x1,y1]= JSON.parse(coord1)
+        const c1=[x1*2,y1*2]
+        const key1=JSON.stringify(c1)
+
+        for (let coord2 of list){
+            const c2=[coord2[0]*2,coord2[1]*2]
+            newPointsStuck.push(c2)
+            const c3=[(c1[0]+c2[0])/2,(c1[1]+c2[1])/2]
+            newPointsStuck.push(c3)
+
+            let c4
+            if (c1[0]+c2[0]){
+                c4=[c3[0]+(rng() < 0.5 ? -1 : 1),c3[1]]
+            }else{
+                c4=[c3[0],c3[1]+(rng() < 0.5 ? -1 : 1)]
+            }
+
+            //newPointsStuck.push(c4)
+            console.log(c4)
+
+            const key3=JSON.stringify(c3)
+
+            if (newStructure.has(key1)){
+                newStructure.get(key1).push(c3)
+            }else{
+                newStructure.set(key1,[c3])
+            }
+            if (newStructure.has(key3)){
+                newStructure.get(key3).push(c2)
+            }else{
+                newStructure.set(key3,[c2])
+            }
+
+            //newStructure.get(key3).push(c4)
+        }
+    }
+
+    console.log(structure)
+
+    return [
+        newCenterPoint,
+        newStructure,
+        newPointsStuck
+    ]
+}
+
+function isInList(a,l){
+    for (let b of l){
+        if (a[0]===b[0] && a[1]===b[1]) return true
+    }
+    return false
+}
+
+function createDLATrick(rng, steps, nb){
+    let centerPoint=[3,3]
+    let centerDistance=3
+    let pointsFree=[]
+    let structure= new Map()
+    let pointsStuck=[]
+    let tabDetails=[]
+    let oldTabDetails=[]
+    let tabMerge=[]
+    let tabBlur=[]
+    let maxHeight=1
+
+    for (let x=0;x<centerDistance*2+1;x++){
+        let col=[]
+        for (let y=0;y<centerDistance*2+1;y++){
+            if (!(x===centerPoint[0] && y===centerPoint[1])){
+                if (x>0 && y>0 && x<centerDistance*2 && y<centerDistance*2) pointsFree.push([x,y])
+                col.push(0)
+            }else{
+                pointsStuck.push([x,y])
+                col.push(1)
+            }
+        }
+        tabDetails.push(col)
+    }
+
+    console.log({...pointsFree})
+
+    const directions = [
+        [ 0, -1],
+        [ 0,  1],
+        [-1,  0],
+        [ 1,  0]
+    ]
+    
+    for (let step=1;step<steps+1;step++){
+
+        // ADD DETAILS
+        for (let n=0;n<nb*3**(step-1);n++){
+            console.log(n)
+            //Choose a free coord randomly
+            let point=pointsFree[Math.floor(rng() * pointsFree.length)]
+            let x=point[0]
+            let y=point[1]
+            let stuck=false
+
+            //Tant qu'il n'est pas stuck
+            do{
+                //S'il est dans la grille
+                let limit=step>1 ? (centerDistance*2)*2*(step-1) : (centerDistance*2)
+                if (x>0 && y>0 && x<limit && y<limit){
+                    //Si un de ses neighbors est stuck on le stuck
+                    let dn=[[ x, y-1],[ x, y+1],[x-1, y],[ x+1, y]]
+                    
+                    for (let [ndx,ndy] of dn){
+                        for (let [nx,ny] of pointsStuck){
+                            if (ndx===nx && ndy===ny) {
+                                stuck=true 
+                                let key=JSON.stringify([ndx,ndy])
+                                if (structure.get(key)) {structure.get(key).push([x,y])}
+                                else {structure.set(JSON.stringify([ndx,ndy]),[[x,y]]) }
+                                break
+
+                                // CAN MAKE RANDOM THE CHOICE
+                            } 
+                        }
+                        if(stuck) break
+                    }
+                    
+                    //S'il est pas stuck on lui applique un Brownian Motion
+                    if (!stuck){
+                        const [dx, dy] = directions[Math.floor(rng() * directions.length)]
+                        x+=dx
+                        y+=dy
+                    }
+                    
+                }else {
+                    //S'il s'éloigne on recrée un point
+                    let point=pointsFree[Math.floor(rng() * pointsFree.length)]
+                    x=point[0]
+                    y=point[1]
+                }
+            }while(!stuck)
+
+            //Remove from Free
+            pointsFree.splice(pointsFree.findIndex(item => item[0] === x && item[1] === y),1)[0]
+            //Add to Stuck
+            pointsStuck.push([x,y])
+
+            tabDetails[x][y]=1
+        }
+
+        if (step>1){
+            let size=(centerDistance*2+1)*2**(step-1)
+
+            //ADD HEIGHT TO CRISP
+            let heightTab=[]
+            let explore=[centerPoint]
+            do{
+                heightTab.push(explore)
+                let newExplore=[]
+                for (let e of explore){
+                    const key=JSON.stringify(e)
+                    if (structure.has(key)) newExplore=newExplore.concat(structure.get(key))
+                }
+                explore=newExplore
+            }while(explore.length)
+
+            let heightMap=new Map()
+            let maximumHeight=0
+            for (let h of heightTab.toReversed()){
+                for (let e of h){
+                    const key=JSON.stringify(e)
+                    if (structure.has(key)){
+                        let maxH=1
+                        for (let c of structure.get(key)){
+                            let H=heightMap.get(JSON.stringify(c))
+                            if (H>maxH) maxH=H
+                        }
+                        heightMap.set(key,maxH+1)
+                        if (maxH+1>maximumHeight) maximumHeight=maxH+1
+                    }else{
+                        heightMap.set(key,1)
+                    }
+                }
+            }
+
+            //MERGE CRISP AND BLUR
+            maxHeight=0
+            tabMerge=[]
+            for (let x=0;x<size;x++){
+                let col=[]
+                for (let y=0;y<size;y++){
+                    let isStuck=false
+                    for (let [sx,sy] of pointsStuck){
+                        if (sx===x && sy===y) isStuck=true
+                    }
+
+                    let value=tabBlur[x][y]
+                    if (isStuck) value+=1-1/(1+heightMap.get(JSON.stringify([x,y]))/maximumHeight*3)
+                    
+                    if (value>maxHeight){
+                        maxHeight=value
+                    }
+
+                    col.push(value)
+                }
+                tabMerge.push(col)
+            }
+        }else{
+            tabMerge=tabDetails
+        }
+
+        //SCALE UP
+        tabBlur=ScaleUpBlur(tabMerge)
+        let scaleUpCrisp=ScaleUpCrisp(centerPoint,structure,rng)
+        centerPoint=scaleUpCrisp[0]
+        structure=scaleUpCrisp[1]
+        pointsStuck=scaleUpCrisp[2]
+        pointsFree=[]
+        let size=(centerDistance*2+1)*2**step
+        for (let x=1;x<size-1;x++){
+            for (let y=1;y<size-1;y++){
+                if (!isInList([x,y],pointsStuck)) pointsFree.push([x,y])
+            }
+        }
+
+        console.log(pointsFree)
+        console.log(pointsStuck)
+
+        oldTabDetails=tabDetails
+
+        tabDetails=[]
+        for (let x=0;x<size;x++){
+            let col=[]
+            for (let y=0;y<size;y++){
+                if (isInList([x,y],pointsStuck)){
+                    col.push(1)
+                }else{
+                    col.push(0)
+                }
+            }
+            tabDetails.push(col)
+        }
+
+    }
+
+    return [
+        (x,y)=>{
+            //return oldTabDetails[x][y]
+            //return tabMerge[x][y]/maxHeight
+            return tabBlur[x][y]/maxHeight
+        },
+        tabBlur,
+        maxHeight
+    ]
+}
+
 
 // Canvas Warp
 let size=[document.getElementById("blendImg").width,document.getElementById("blendImg").height]
 let canvasWarp=document.getElementById("canvasWarp");
-canvasWarp.width=size[0]
-canvasWarp.height=size[1]
+let numberIteration=3
+let dlaSize=(2**(numberIteration))*7
+canvasWarp.width=dlaSize*16
+canvasWarp.height=dlaSize*16
 const ctxTest = canvasWarp.getContext("2d");
+ctxTest.imageSmoothingEnabled = false
 ctxTest.drawImage(document.getElementById("blendMask"),0,0)
 let maskImageData=ctxTest.getImageData(0,0,size[0],size[1])
 ctxTest.drawImage(document.getElementById("grasslandTexture"),0,0)
@@ -1572,6 +1965,149 @@ ctxTest.drawImage(document.getElementById("oceanTexture"),0,0)
 let oceanTexture=ctxTest.getImageData(0,0,size[0],size[1])
 ctxTest.drawImage(document.getElementById("blendImg"),0,0)
 let refImageData=ctxTest.getImageData(0,0,size[0],size[1])
+
+
+//DLA
+
+let DLASeed="1786110195696"
+//1786034241025 / 1786034324050 / 1786034347718 / 1786110195696 / 1786116084034
+console.log("DLA Seed",DLASeed)
+let rngDLA = new Math.seedrandom(DLASeed)
+let [dlaTrick,dlaTab,dlaHeight] = createDLATrick(rngDLA,numberIteration,10)
+
+dlaTab=ScaleUpBlur(dlaTab)
+dlaTab=ScaleUpBlur(dlaTab)
+dlaTab=ScaleUpBlur(dlaTab)
+dlaTab=ScaleUpBlur(dlaTab)
+
+let cfgDLA={
+    scale:0.01,
+    warpOctaves:3,
+    warpLacunarity:2,
+    warpPersistence:0.5,
+    warpStrength:20,
+    masked:false,
+    centralized:false,
+    debugCircle:false,
+    clampPixel:false,
+    colorReplace:[0,255,0,0]
+}
+warpDLA=new Warper(cfgDLA)
+
+let dlaTexture = ctxTest.createImageData(dlaTab.length,dlaTab.length)
+let dlaTextureColor=ctxTest.createImageData(dlaTab.length,dlaTab.length)
+
+let textureMountain=ctxTest.createImageData(dlaTab.length,dlaTab.length)
+
+let cfgMountain1={
+    scale:0.005,
+    octaves:3,
+    ridged:false,
+    inversed:false,
+    warp:false,
+    colorised:false,
+    centralized:false,
+    circleDistance:300,
+}
+let noiseMountain1 = new PerlinNoise("mountain texture1",cfgMountain1)
+const resultMountain1=noiseMountain1.createPerlinNoise(0,dlaTab.length,0,dlaTab.length)
+
+let cfgMountain2={
+    scale:0.05,
+    octaves:3,
+    ridged:false,
+    inversed:false,
+    warp:false,
+    colorised:false,
+    centralized:false,
+    circleDistance:300,
+}
+let noiseMountain2 = new PerlinNoise("mountain texture2",cfgMountain2)
+const resultMountain2=noiseMountain2.createPerlinNoise(0,dlaTab.length,0,dlaTab.length)
+
+function ValueRamp(v,p1,p2,v1,v2){
+    if (v<p1) return v1
+    else if (v>p2) return v2
+    else return (v-p1)/(p2-p1)
+}
+
+function darken(c1,c2){
+    return [Math.min(c1[0],c2[0]),Math.min(c1[1],c2[1]),Math.min(c1[2],c2[2])]
+}
+
+function hexToRgb(hex) {
+  const cleanHex = hex.replace("#", "");
+  return [parseInt(cleanHex.substring(0, 2), 16), parseInt(cleanHex.substring(2, 4), 16), parseInt(cleanHex.substring(4, 6), 16)];
+}
+
+let c1=hexToRgb("#948077")//"#948077" "#68605d"
+let c2=hexToRgb("#c09f90")//"#c09f90" "#948077"
+
+for (let x=0;x<dlaTab.length;x++){
+    for (let y=0;y<dlaTab.length;y++){
+        let v1=resultMountain1[0][x][y]
+        let color1=lerpRGB(c1,c2,ValueRamp(v1,0.45,0.65,0,1))
+        
+        let v2=resultMountain2[0][x][y]
+        let color2=lerpRGB(c1,c2,ValueRamp(v2,0.4,0.6,0,1))
+
+        let factor=0.8
+        setPixel(textureMountain,x,y,lerpRGB(color1,darken(color1,color2),factor))
+    }
+}
+
+textureMountain=warpDLA.softenImage(textureMountain)
+textureMountain=warpDLA.softenImage(textureMountain)
+
+for (let x=0;x<dlaTab.length;x++){
+    for (let y=0;y<dlaTab.length;y++){
+        let v=dlaTab[x][y]/dlaHeight
+        let color=[v*255,v*255,v*255]
+        setPixel(dlaTexture,x,y,color)
+
+        let baseColor
+        let factor=1
+        let alpha=1
+        if (v<0.05){
+            // let firstColor=[79, 139, 58]
+            // let secondColor=[63, 111, 47]//[148,128,119]
+            // baseColor=lerpRGB(firstColor,secondColor,v/0.05)
+            baseColor=[148,128,119]//[0,255,0]//[148,128,119]
+            factor=0.5
+            alpha=v/0.05
+        }else if(v<0.5){
+            baseColor=getPixel(textureMountain,x,y)//[255,0,0]//[148,128,119]
+            factor=(v-0.05)/0.4*0.5+0.5
+        }else{
+            baseColor=[242, 246, 251]//[0,0,255]
+            factor=(v-0.5)/0.5*0.2+0.8
+        }
+        let colorTexture=[baseColor[0]*factor,baseColor[1]*factor,baseColor[2]*factor]
+        
+        setPixel(dlaTextureColor,x,y,colorTexture,alpha*255)
+    }
+}
+
+dlaTextureColor=warpDLA.warpImage(dlaTextureColor)
+
+ctxTest.putImageData(textureMountain,0,0)
+
+create3DTexture(dlaTexture,dlaTextureColor,dlaTab,(dataURL)=>{
+    const text = PIXI.Texture.from(dataURL)
+
+    let mountain=new PIXI.Sprite(text)
+    map.addChild(mountain)
+
+    let tileMo=getTileFromCoord([51,52])
+
+    mountain.width=15
+    mountain.height=15
+    mountain.x=tileMo.x-mountain.width/2
+    mountain.y=tileMo.y-mountain.height/2
+
+    mountain.eventMode='none'
+    
+})
 
 
 grasslandTexture = ctxTest.createImageData(529,529)
@@ -1613,8 +2149,6 @@ for (let x=0;x<grasslandTexture.width;x++){
     }
 }
 
-
-ctxTest.putImageData(grasslandTexture,0,0)
 
 let rgbMask
 let config={

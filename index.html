@@ -10,24 +10,43 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.15/dist/gsap.min.js"></script>
+    <script type="importmap">
+        {
+        "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/"
+            }
+        }
+    </script>
     <script type="module">
         import { createNoise2D } from "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/+esm";
+        import * as th from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+        window.THREE=th;
+        window.GUI=GUI
+        window.OrbitControls=OrbitControls;
         window.createNoise2D = createNoise2D;
     </script>
+    <script src="script/3d.js" defer></script>
     <script src="script/script.js" defer></script>
     <script src="script/mechanics.js" defer></script>
 </head>
 <body>
     <div class="game" id="game"></div>
     <canvas class="perlinNoise" id="perlinNoise"></canvas>
-    <div class="menu">
-        <img src="data/tileHexRGB.png">
+    <div class="menu" style="/*display: none;*/">
+        <img src="data/tileHexRGB.png" style="display: none;">
         <img src="data/grasslandTexture.png" id="grasslandTexture" style="display: none;">
         <img src="data/sandTexture.png" id="sandTexture" style="display: none;">
         <img src="data/oceanTexture.png" id="oceanTexture" style="display: none;">
         <img src="data/tileHexMask.png" id="blendMask" style="display: none;">
         <img src="data/tileHexBlendRGB.png" id="blendImg" style="display: none;">
         <canvas class="blendHex" id="canvasWarp"></canvas>
+    </div>
+    <div class="div3d" style="/*display: none;*/">
+        <canvas class="div3d-canvas" id="div3d-canvas"></canvas>
     </div>
     
 </body>
